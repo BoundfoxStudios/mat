@@ -169,7 +169,9 @@ describe('eight competing processes', () => {
   }, 30_000);
 });
 
-describe('a cache directory someone else prepared', () => {
+// Ownership and mode are POSIX signals; Windows reports invented values for both, which is why
+// `ensureOwnedDirectory` skips these checks there and why asserting them here would be a fiction.
+describe.skipIf(process.platform === 'win32')('a cache directory someone else prepared', () => {
   test('is refused when another user owns it', () => {
     // On a shared host `/tmp/mat` is a name anyone can claim first, and `mkdirSync` accepts a
     // directory it did not create. Ownership is the only thing that distinguishes ours.

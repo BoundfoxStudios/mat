@@ -45,18 +45,28 @@ function lstatOrUndefined(path: string): Stats | undefined {
  * On Linux `tmpdir()` is the shared `/tmp`, and `mkdirSync` accepts a pre-existing directory no
  * matter who owns it. Without this an unprivileged user can create `/tmp/mat/assets` first and
  * plant a file under a name `mat` will later serve to the browser as its own script.
+ *
+ * Windows has neither of the two signals: there is no `process.getuid`, and `lstat` synthesises
+ * the mode rather than reading it, so a directory that is in fact private reports `0o777` and
+ * would fail the check below on every run. Its temp directory is per user and carries an ACL, so
+ * the check is dropped there instead of being decided on invented numbers.
  */
 export function ensureOwnedDirectory(path: string): void {
   mkdirSync(path, { recursive: true, mode: 0o700 });
 
   const stats = lstatSync(path);
-  const uid = process.getuid?.();
 
   if (!stats.isDirectory()) {
     throw new Error(`${path}: not a directory`);
   }
 
-  if (uid !== undefined && stats.uid !== uid) {
+  const uid = process.getuid?.();
+
+  if (uid === undefined) {
+    return;
+  }
+
+  if (stats.uid !== uid) {
     throw new Error(`${path}: owned by another user, refusing to use it`);
   }
 
@@ -113,8 +123,9 @@ export function cacheAsset(
   ensureCacheDirectories();
 
   const existing = lstatOrUndefined(targetPath);
+  const uid = process.getuid?.();
 
-  if (existing?.isFile() && existing.uid === process.getuid?.()) {
+  if (existing?.isFile() && (uid === undefined || existing.uid === uid)) {
     return targetPath;
   }
 
