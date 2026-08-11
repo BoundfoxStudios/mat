@@ -6,6 +6,7 @@ import { runSafely } from 'cmd-ts';
 import { ensureOwnedDirectory, matDirectory, writeAtomically } from './assets/cache.ts';
 import { openInBrowser } from './browser.ts';
 import { type Invocation, renderCommand } from './cli/commands/render.ts';
+import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.ts';
 import { describeFileSystemError, RuntimeError } from './cli/errors.ts';
 import { MAT_VERSION } from './generated/assets.ts';
 import { render } from './render/index.ts';
@@ -63,17 +64,32 @@ export function decodeMarkdown(bytes: Uint8Array, label: string): string {
   }
 }
 
+/** Called without a file, `mat` renders whatever the current directory offers first. */
+function defaultSource(directory: string): string {
+  const found = findDefaultDocument(directory);
+
+  if (found === undefined) {
+    throw new RuntimeError(
+      `no file given, and none of ${DEFAULT_DOCUMENTS.join(', ')} exists in ${directory}`,
+    );
+  }
+
+  return found;
+}
+
 async function readSource(invocation: Invocation): Promise<{ bytes: Uint8Array; label: string }> {
   if (invocation.source === '-') {
     return { bytes: readStdin(), label: '<stdin>' };
   }
 
+  const source = invocation.source ?? defaultSource(process.cwd());
+
   try {
-    const realPath = realpathSync(invocation.source);
+    const realPath = realpathSync(source);
     const stats = statSync(realPath);
 
     if (stats.isDirectory()) {
-      throw new RuntimeError(`${invocation.source}: is a directory`);
+      throw new RuntimeError(`${source}: is a directory`);
     }
 
     // Before reading, not after: a 3 GB file otherwise costs 3 GB of memory to be told it is too
@@ -90,7 +106,7 @@ async function readSource(invocation: Invocation): Promise<{ bytes: Uint8Array; 
       throw error;
     }
 
-    throw new RuntimeError(`${invocation.source}: ${describeFileSystemError(error)}`);
+    throw new RuntimeError(`${source}: ${describeFileSystemError(error)}`);
   }
 }
 

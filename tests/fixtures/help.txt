@@ -2,7 +2,7 @@ mat 0.1.0
 > Render a Markdown file the way GitHub does and open it in your browser.
 
 ARGUMENTS:
-  <file.md> - The file to render, or - to read stdin.
+  [file.md] - The file to render, or - to read stdin. Default: the first of index.md, README.md, docs/index.md, docs/README.md, SPEC.md that exists here. [optional]
 
 OPTIONS:
   --output <path>  - Write the self-contained HTML there and open no browser. - is stdout. [optional]
@@ -18,6 +18,9 @@ EXAMPLES:
 
   Render a file and open it in the browser
   $ mat README.md
+
+  Render this directory's first standard document
+  $ mat
 
   Read the document from stdin
   $ cat notes.md | mat -

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { runSafely } from 'cmd-ts';
 import { type Invocation, renderCommand } from '../src/cli/commands/render.ts';
+import { DEFAULT_DOCUMENTS, findDefaultDocument } from '../src/cli/default-document.ts';
 import { decodeMarkdown, main } from '../src/cli.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
@@ -51,7 +52,7 @@ const SPAWN_TIMEOUT = 180_000;
 
 // `TMPDIR` and `PATH` go into the *child* environment; setting them on `process.env` would hit
 // whatever other test file is running at that moment.
-async function spawn(args: readonly string[], stdin?: string): Promise<RunResult> {
+async function spawn(args: readonly string[], stdin?: string, cwd?: string): Promise<RunResult> {
   const emptyPath = join(scratch, 'no-launchers');
   mkdirSync(emptyPath, { recursive: true });
 
@@ -75,6 +76,7 @@ async function spawn(args: readonly string[], stdin?: string): Promise<RunResult
 
   const child = Bun.spawn([process.execPath, 'run', CLI, ...args], {
     env: { ...process.env, TMPDIR: scratch, PATH: emptyPath },
+    cwd,
     stdin: stdinSource,
     stdout: Bun.file(stdoutPath),
     stderr: Bun.file(stderrPath),
@@ -128,6 +130,10 @@ describe('arguments', () => {
     }
   });
 
+  test('leaves the source undefined when no file is named', async () => {
+    expect(await parse([])).toMatchObject({ source: undefined });
+  });
+
   test('resolves base-dir to an absolute path', async () => {
     expect(await parse(['-', `--base-dir=${scratch}`])).toMatchObject({
       source: '-',
@@ -138,7 +144,6 @@ describe('arguments', () => {
   // Every one of these ends in exit 2 with the offending argument pointed at; the fragment is what
   // tells the user which mistake they made.
   const rejected: ReadonlyArray<[string, readonly string[], string]> = [
-    ['no arguments', [], 'No value provided for file.md'],
     ['two files', ['a.md', 'b.md'], 'Unknown arguments'],
     ['unknown flag', ['a.md', '--nope'], 'Unknown arguments'],
     // Without this, cmd-ts falls back to the default and silently ignores what was typed.
@@ -148,6 +153,8 @@ describe('arguments', () => {
     // With a file argument the base is always that file's directory; an override would silently
     // resolve images against a directory the document knows nothing about.
     ['base-dir with a file', ['a.md', '--base-dir=/tmp'], '--base-dir is only valid'],
+    // The default document is a file too, so its own directory wins here as well.
+    ['base-dir without a file', ['--base-dir=/tmp'], '--base-dir is only valid'],
   ];
 
   for (const [name, args, expected] of rejected) {
@@ -159,6 +166,82 @@ describe('arguments', () => {
       expect(stderr).toContain(expected);
     });
   }
+});
+
+describe('default document', () => {
+  function workspace(name: string): string {
+    const directory = join(scratch, name);
+    mkdirSync(directory, { recursive: true });
+
+    return directory;
+  }
+
+  function create(directory: string, relativePath: string, contents = '# x'): string {
+    const path = join(directory, relativePath);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, contents);
+
+    return path;
+  }
+
+  test('takes the first candidate that exists', () => {
+    const directory = workspace('order');
+    create(directory, 'SPEC.md');
+    create(directory, 'docs/README.md');
+
+    expect(findDefaultDocument(directory)).toBe(join(directory, 'docs', 'README.md'));
+
+    create(directory, 'README.md');
+
+    expect(findDefaultDocument(directory)).toBe(join(directory, 'README.md'));
+
+    create(directory, 'index.md');
+
+    expect(findDefaultDocument(directory)).toBe(join(directory, 'index.md'));
+  });
+
+  test('walks past a directory carrying a candidate name', () => {
+    const directory = workspace('shadowed');
+    // A `mat` that only checked for existence would stop here and fail with "is a directory".
+    mkdirSync(join(directory, 'index.md'));
+    create(directory, 'README.md');
+
+    expect(findDefaultDocument(directory)).toBe(join(directory, 'README.md'));
+  });
+
+  test('finds nothing in an empty directory', () => {
+    expect(findDefaultDocument(workspace('empty'))).toBeUndefined();
+  });
+
+  test(
+    'renders it when no file is given',
+    async () => {
+      const directory = workspace('implicit');
+      create(directory, 'README.md', '# Von README\n\n![](bild.png)');
+      writeFileSync(join(directory, 'bild.png'), '');
+
+      const { code, stdout } = await spawn(['--output', '-'], undefined, directory);
+
+      expect(code).toBe(0);
+      expect(stdout).toContain('<h1 id="von-readme">');
+      // Relative links resolve against the document, not against the current directory — the two
+      // happen to be the same one here, but the path has been through `realpath`.
+      expect(stdout).toMatch(/src="file:\/\/\S*\/bild\.png"/);
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'exits 1 and names every candidate when there is none',
+    async () => {
+      const { code, stdout, stderr } = await spawn([], undefined, workspace('bare'));
+
+      expect(code).toBe(1);
+      expect(stdout).toBe('');
+      expect(stderr).toContain(DEFAULT_DOCUMENTS.join(', '));
+    },
+    SPAWN_TIMEOUT,
+  );
 });
 
 describe('decodeMarkdown', () => {

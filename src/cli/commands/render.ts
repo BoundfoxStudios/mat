@@ -3,10 +3,11 @@ import type { ParseContext, ParsingResult } from 'cmd-ts/dist/cjs/argparser';
 import { DEFAULT_FLAVOR_NAME } from '../../flavors/index.ts';
 import { MAT_VERSION, type ThemeName } from '../../generated/assets.ts';
 import { directoryType, flavorType, pathType, themeType } from '../argument-types.ts';
+import { DEFAULT_DOCUMENTS } from '../default-document.ts';
 import { longOptionsNamed, valuedOption } from '../options.ts';
 
 export interface Invocation {
-  source: string;
+  source: string | undefined;
   output: string | undefined;
   theme: ThemeName;
   flavor: string;
@@ -19,6 +20,7 @@ const renderArguments = command({
   description: 'Render a Markdown file the way GitHub does and open it in your browser.',
   examples: [
     { description: 'Render a file and open it in the browser', command: 'mat README.md' },
+    { description: "Render this directory's first standard document", command: 'mat' },
     { description: 'Read the document from stdin', command: 'cat notes.md | mat -' },
     {
       description: 'Write a self-contained file and open nothing',
@@ -28,7 +30,8 @@ const renderArguments = command({
   args: {
     source: positional({
       displayName: 'file.md',
-      description: 'The file to render, or - to read stdin.',
+      type: optional(pathType),
+      description: `The file to render, or - to read stdin. Default: the first of ${DEFAULT_DOCUMENTS.join(', ')} that exists here.`,
     }),
     // Single line each: cmd-ts prints a description as it is given, so a line break here would
     // leave the second line hanging in the first column.
@@ -67,8 +70,8 @@ export const renderCommand = {
     const parsed = await renderArguments.parse(context);
 
     if (parsed._tag === 'ok' && parsed.value.baseDir !== undefined && parsed.value.source !== '-') {
-      // With a file argument the base is always that file's directory; an override would silently
-      // resolve images against a directory the document knows nothing about.
+      // Whenever a file is rendered — named or defaulted to — the base is that file's directory;
+      // an override would silently resolve images against a directory it knows nothing about.
       return {
         _tag: 'error',
         error: {
