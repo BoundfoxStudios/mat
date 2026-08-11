@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Generated per release by scripts/release.ts from the published binaries
+Formula/
+
+# Generated assets — produced by `bun run build:assets`, never committed
+src/generated/
+
+# Local environment — never commit secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test output
+coverage/
+tests/**/*.actual.html
