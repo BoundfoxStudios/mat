@@ -31,7 +31,7 @@ jobs:
     steps:
       - name: Mint a token for the release pull request
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@v3.2.0
         with:
           client-id: ${{ vars.BFS_APP_BOT_CLIENT_ID }}
           private-key: ${{ secrets.BFS_APP_BOT_PRIVATE_KEY }}
@@ -39,7 +39,7 @@ jobs:
           permission-issues: write
           permission-pull-requests: write
 
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - uses: googleapis/release-please-action@v5.0.0
         id: release
         with:
           token: ${{ steps.app-token.outputs.token }}
@@ -52,11 +52,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -83,12 +83,12 @@ jobs:
           - { runner: windows-latest, triple: bun-windows-x64, binary: mat-windows-x64.exe }
           - { runner: macos-latest, triple: bun-darwin-arm64, binary: mat-darwin-arm64 }
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           # The tagged commit: the binary bakes in package.json's version at build time.
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -110,7 +110,7 @@ jobs:
           ./dist/${{ matrix.binary }} --version
           ./dist/${{ matrix.binary }} tests/fixtures/torture.md --output - > /dev/null
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ matrix.binary }}
           path: dist/${{ matrix.binary }}
@@ -127,15 +127,15 @@ jobs:
     env:
       TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -160,7 +160,7 @@ jobs:
       - name: Mint a token for the tap
         id: tap-token
         if: ${{ vars.BFS_APP_BOT_CLIENT_ID != '' }}
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@v3.2.0
         with:
           client-id: ${{ vars.BFS_APP_BOT_CLIENT_ID }}
           private-key: ${{ secrets.BFS_APP_BOT_PRIVATE_KEY }}
