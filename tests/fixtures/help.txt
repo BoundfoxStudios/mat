@@ -1,4 +1,4 @@
-mat 0.1.0
+mat {{version}}
 > Render a Markdown file the way GitHub does and open it in your browser.
 
 ARGUMENTS:

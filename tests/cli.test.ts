@@ -6,6 +6,7 @@ import { runSafely } from 'cmd-ts';
 import { type Invocation, renderCommand } from '../src/cli/commands/render.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from '../src/cli/default-document.ts';
 import { decodeMarkdown, main } from '../src/cli.ts';
+import { MAT_VERSION } from '../src/generated/assets.ts';
 
 const CLI = join(import.meta.dir, '..', 'src', 'cli.ts');
 
@@ -293,7 +294,10 @@ describe('exit codes', () => {
 
     expect(help.code).toBe(0);
     expect(help.stderr).toBe('');
-    expect(help.stdout).toBe(readFileSync(join(import.meta.dir, 'fixtures', 'help.txt'), 'utf8'));
+    const expectedHelp = readFileSync(join(import.meta.dir, 'fixtures', 'help.txt'), 'utf8')
+      // The version bumps on every release; pinning it in the fixture would break release PRs.
+      .replace('{{version}}', MAT_VERSION);
+    expect(help.stdout).toBe(expectedHelp);
 
     expect(version.code).toBe(0);
     // `brew test` checks this exact string.
