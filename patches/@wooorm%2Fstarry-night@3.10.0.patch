@@ -1,0 +1,12 @@
+diff --git a/package.json b/package.json
+index f519f319f2dc22e4d33e03bface62e51060c9e4b..dd2fa250c0ee637e1b4c80c110af9d8f17cf928d 100644
+--- a/package.json
++++ b/package.json
+@@ -34,6 +34,7 @@
+   },
+   "exports": {
+     ".": "./index.js",
++    "./lib/index.js": "./lib/index.js",
+     "./*": "./lang/*.js",
+     "./style/*": "./style/*.css"
+   },

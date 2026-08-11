@@ -1,0 +1,198 @@
+name: Release
+
+# Build and release must share one workflow: GitHub does not start workflow runs for events raised
+# by the default GITHUB_TOKEN, so the tag release-please creates would never fire a `push: tags`
+# trigger and every release would ship a changelog without binaries.
+on:
+  push:
+    branches: [main]
+
+env:
+  BUN_VERSION: 1.3.14
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: Release pull request and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    env:
+      # Lifted out of `secrets` because a step `if` cannot read that context — this is what keeps
+      # the app optional instead of a hard requirement for every release.
+      APP_CLIENT_ID: ${{ secrets.BFS_APP_BOT_CLIENT_ID }}
+    outputs:
+      # Outputs are strings, including the boolean-looking ones.
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Mint a token for the release pull request
+        id: app-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.BFS_APP_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          # Without the app the pull request is opened by `github-actions[bot]`, and this
+          # repository's fork-pull-request approval policy parks every run it triggers at
+          # `action_required`: the release pull request then sits there with no CI result at all,
+          # forever. A pull request opened through the app installation is an ordinary contributor
+          # as far as that policy is concerned, so its checks start on their own.
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+  scan:
+    name: Dependency vulnerabilities
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Scan
+        run: bunx cve-lite-cli@1.28.0 . --fail-on critical
+
+  build:
+    name: ${{ matrix.triple }}
+    needs: [release-please, scan]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # darwin must be built natively and ad-hoc signed, or the binary fails `codesign -v` and
+          # is killed on Apple Silicon (oven-sh/bun#32159).
+          - { runner: ubuntu-latest, triple: bun-linux-x64, binary: mat-linux-x64 }
+          - { runner: ubuntu-24.04-arm, triple: bun-linux-arm64, binary: mat-linux-arm64 }
+          - { runner: windows-latest, triple: bun-windows-x64, binary: mat-windows-x64.exe }
+          - { runner: macos-latest, triple: bun-darwin-arm64, binary: mat-darwin-arm64 }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tagged commit: the binary bakes in package.json's version at build time.
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build:assets && bun run scripts/build.ts --target=${{ matrix.triple }}
+
+      - name: Sign
+        if: startsWith(matrix.runner, 'macos')
+        run: |
+          codesign --force --sign - dist/${{ matrix.binary }}
+          codesign --verify --verbose dist/${{ matrix.binary }}
+
+      - name: Run it
+        shell: bash
+        run: |
+          ./dist/${{ matrix.binary }} --version
+          ./dist/${{ matrix.binary }} tests/fixtures/torture.md --output - > /dev/null
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.binary }}
+          path: dist/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish binaries and formula
+    # `release-please` too, not just `build`: a job can only read outputs of jobs it lists here.
+    needs: [release-please, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+      # Lifted out of `secrets` because a step `if` cannot read that context — this is what makes
+      # the tap steps below skippable rather than a hard requirement for every release.
+      APP_CLIENT_ID: ${{ secrets.BFS_APP_BOT_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Regenerate the formula
+        run: bun run scripts/release.ts --version "$TAG" --binaries dist
+
+      - name: Attach the binaries to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The notices travel with the binaries, not just with the source: a downloaded binary
+        # redistributes mermaid, KaTeX and 694 grammars, and several of those licences require the
+        # notice to accompany the distribution.
+        run: |
+          gh release upload "$TAG" \
+            dist/mat-* \
+            Formula/mat.rb \
+            THIRD-PARTY-NOTICES.md \
+            third-party/starry-night-grammars-notice.txt \
+            --clobber
+
+      - name: Mint a token for the tap
+        id: tap-token
+        if: ${{ env.APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ env.APP_CLIENT_ID }}
+          private-key: ${{ secrets.BFS_APP_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: homebrew-tap
+          permission-contents: write
+
+      - name: Publish the formula to the tap
+        # Skipped without an app: a missing tap token must not fail a release whose binaries are
+        # already published.
+        if: ${{ steps.tap-token.outputs.token != '' }}
+        env:
+          TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/BoundfoxStudios/homebrew-tap.git" tap
+          cp Formula/mat.rb tap/Formula/mat.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/mat.rb
+          git commit -m "chore: update mat to ${TAG}"
+          git push
