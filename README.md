@@ -53,6 +53,11 @@ a reload is enough, and you keep your scroll position.
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.
 
+Once a day, `mat` asks GitHub in the background whether a newer release exists and, if so, says
+so on stderr. Rendering never waits for the answer: a check that has not returned by the time the
+document is done is dropped and tried again another day. It only runs when stderr is a terminal,
+and setting `MAT_NO_UPDATE_CHECK` (or `CI`) turns it off entirely.
+
 ### Exit codes
 
 | Code | Meaning |

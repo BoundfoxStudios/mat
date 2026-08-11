@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { runSafely } from 'cmd-ts';
 import { type Invocation, renderCommand } from '../src/cli/commands/render.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from '../src/cli/default-document.ts';
+import type { UpdateCheckOptions } from '../src/cli/update-check.ts';
 import { decodeMarkdown, main } from '../src/cli.ts';
 import { MAT_VERSION } from '../src/generated/assets.ts';
 
@@ -244,6 +245,106 @@ describe('default document', () => {
     },
     SPAWN_TIMEOUT,
   );
+});
+
+describe('update check wiring', () => {
+  interface WiringResult {
+    captured: UpdateCheckOptions[];
+    reports: number;
+    code: number;
+  }
+
+  /**
+   * Env vars are set and restored around the call because the gate reads `process.env`; the
+   * injected check keeps the suite away from the network and the shared temp directory.
+   */
+  async function invoke(
+    args: readonly string[],
+    interactive: boolean | undefined,
+    env: Record<string, string | undefined>,
+  ): Promise<WiringResult> {
+    const original = new Map<string, string | undefined>();
+
+    for (const [key, value] of Object.entries(env)) {
+      original.set(key, process.env[key]);
+
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    const captured: UpdateCheckOptions[] = [];
+    let reports = 0;
+
+    try {
+      const code = await main(
+        args,
+        { stdout: () => {}, stderr: () => {}, interactive },
+        (options) => {
+          captured.push(options);
+
+          return {
+            report() {
+              reports++;
+            },
+            settled: Promise.resolve(),
+          };
+        },
+      );
+
+      return { captured, reports, code };
+    } finally {
+      for (const [key, value] of original) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+
+  const CLEAR_GATE = { MAT_NO_UPDATE_CHECK: undefined, CI: undefined };
+
+  test('enables the check only for an interactive terminal outside CI', async () => {
+    const path = fixture('note.md', '# x');
+    const target = join(scratch, 'note.html');
+
+    const enabled = await invoke([path, `--output=${target}`], true, CLEAR_GATE);
+
+    expect(enabled.captured).toHaveLength(1);
+    expect(enabled.captured[0]?.enabled).toBe(true);
+    expect(enabled.reports).toBe(1);
+
+    const cases: ReadonlyArray<[boolean | undefined, Record<string, string | undefined>]> = [
+      [undefined, CLEAR_GATE],
+      [true, { ...CLEAR_GATE, CI: '1' }],
+      [true, { ...CLEAR_GATE, MAT_NO_UPDATE_CHECK: '1' }],
+    ];
+
+    for (const [interactive, env] of cases) {
+      const { captured } = await invoke([path, `--output=${target}`], interactive, env);
+
+      expect(captured[0]?.enabled).toBe(false);
+    }
+  });
+
+  test('reports even when the render fails', async () => {
+    const { reports, code } = await invoke([join(scratch, 'nope.md')], true, CLEAR_GATE);
+
+    expect(code).toBe(1);
+    expect(reports).toBe(1);
+  });
+
+  test('starts no check for --help, --version or a usage error', async () => {
+    for (const args of [['--help'], ['--version'], ['a.md', '--nope']]) {
+      const { captured } = await invoke(args, true, CLEAR_GATE);
+
+      expect(captured).toHaveLength(0);
+    }
+  });
 });
 
 describe('decodeMarkdown', () => {
