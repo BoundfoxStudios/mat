@@ -221,9 +221,10 @@ describe('default document', () => {
       create(directory, 'README.md', '# Von README\n\n![](bild.png)');
       writeFileSync(join(directory, 'bild.png'), '');
 
-      const { code, stdout } = await spawn(['--output', '-'], undefined, directory);
+      const { code, stdout, stderr } = await spawn(['--output', '-'], undefined, directory);
 
       expect(code).toBe(0);
+      expect(stderr).toContain('mat: no file given, rendering README.md');
       expect(stdout).toContain('<h1 id="von-readme">');
       // Relative links resolve against the document, not against the current directory — the two
       // happen to be the same one here, but the path has been through `realpath`.

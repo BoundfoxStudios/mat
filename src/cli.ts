@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { runSafely } from 'cmd-ts';
 import { ensureOwnedDirectory, matDirectory, writeAtomically } from './assets/cache.ts';
@@ -65,7 +65,7 @@ export function decodeMarkdown(bytes: Uint8Array, label: string): string {
 }
 
 /** Called without a file, `mat` renders whatever the current directory offers first. */
-function defaultSource(directory: string): string {
+function defaultSource(directory: string, out: OutputStreams): string {
   const found = findDefaultDocument(directory);
 
   if (found === undefined) {
@@ -74,15 +74,20 @@ function defaultSource(directory: string): string {
     );
   }
 
+  out.stderr(`mat: no file given, rendering ${relative(directory, found)}\n`);
+
   return found;
 }
 
-async function readSource(invocation: Invocation): Promise<{ bytes: Uint8Array; label: string }> {
+async function readSource(
+  invocation: Invocation,
+  out: OutputStreams,
+): Promise<{ bytes: Uint8Array; label: string }> {
   if (invocation.source === '-') {
     return { bytes: readStdin(), label: '<stdin>' };
   }
 
-  const source = invocation.source ?? defaultSource(process.cwd());
+  const source = invocation.source ?? defaultSource(process.cwd(), out);
 
   try {
     const realPath = realpathSync(source);
@@ -144,7 +149,7 @@ function reportMessages(messages: readonly string[], out: OutputStreams): void {
 }
 
 async function runRender(invocation: Invocation, out: OutputStreams): Promise<number> {
-  const { bytes, label } = await readSource(invocation);
+  const { bytes, label } = await readSource(invocation, out);
 
   if (bytes.byteLength > WARN_BYTES) {
     out.stderr(`mat: ${label} is ${bytes.byteLength} bytes; this may take a moment\n`);
