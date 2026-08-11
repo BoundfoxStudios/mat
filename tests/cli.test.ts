@@ -224,7 +224,7 @@ describe('default document', () => {
       const { code, stdout, stderr } = await spawn(['--output', '-'], undefined, directory);
 
       expect(code).toBe(0);
-      expect(stderr).toContain('mat: no file given, rendering README.md');
+      expect(stderr).toContain('no file given, rendering README.md');
       expect(stdout).toContain('<h1 id="von-readme">');
       // Relative links resolve against the document, not against the current directory — the two
       // happen to be the same one here, but the path has been through `realpath`.
@@ -417,7 +417,7 @@ describe('output', () => {
     expect(stdout).toStartWith('<!doctype html>');
     expect(stdout).toContain('<h1 id="überschrift">');
     expect(stdout).not.toContain('Unknown language');
-    expect(stderr).toContain('mat: Unknown language `nosuchlang`');
+    expect(stderr).toContain('Unknown language `nosuchlang`');
   });
 
   test('writes to a file without opening anything', async () => {

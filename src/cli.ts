@@ -8,6 +8,7 @@ import { openInBrowser } from './browser.ts';
 import { type Invocation, renderCommand } from './cli/commands/render.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.ts';
 import { describeFileSystemError, RuntimeError } from './cli/errors.ts';
+import { createLogger, type Logger } from './cli/logger.ts';
 import { MAT_VERSION } from './generated/assets.ts';
 import { render } from './render/index.ts';
 
@@ -65,7 +66,7 @@ export function decodeMarkdown(bytes: Uint8Array, label: string): string {
 }
 
 /** Called without a file, `mat` renders whatever the current directory offers first. */
-function defaultSource(directory: string, out: OutputStreams): string {
+function defaultSource(directory: string, logger: Logger): string {
   const found = findDefaultDocument(directory);
 
   if (found === undefined) {
@@ -74,20 +75,20 @@ function defaultSource(directory: string, out: OutputStreams): string {
     );
   }
 
-  out.stderr(`mat: no file given, rendering ${relative(directory, found)}\n`);
+  logger.info(`no file given, rendering ${relative(directory, found)}`);
 
   return found;
 }
 
 async function readSource(
   invocation: Invocation,
-  out: OutputStreams,
+  logger: Logger,
 ): Promise<{ bytes: Uint8Array; label: string }> {
   if (invocation.source === '-') {
     return { bytes: readStdin(), label: '<stdin>' };
   }
 
-  const source = invocation.source ?? defaultSource(process.cwd(), out);
+  const source = invocation.source ?? defaultSource(process.cwd(), logger);
 
   try {
     const realPath = realpathSync(source);
@@ -127,6 +128,8 @@ function resolveBaseDir(invocation: Invocation, realPath: string | undefined): s
 export interface OutputStreams {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
+  /** Whether stderr is an interactive terminal; picks the human-friendly log format. */
+  interactive?: boolean;
 }
 
 const PROCESS_STREAMS: OutputStreams = {
@@ -136,23 +139,28 @@ const PROCESS_STREAMS: OutputStreams = {
   stderr: (text) => {
     process.stderr.write(text);
   },
+  interactive: process.stderr.isTTY === true,
 };
 
-function reportMessages(messages: readonly string[], out: OutputStreams): void {
+function reportMessages(messages: readonly string[], logger: Logger): void {
   for (const message of messages.slice(0, MAX_PRINTED_MESSAGES)) {
-    out.stderr(`mat: ${message}\n`);
+    logger.warn(message);
   }
 
   if (messages.length > MAX_PRINTED_MESSAGES) {
-    out.stderr(`mat: ${messages.length - MAX_PRINTED_MESSAGES} more warnings\n`);
+    logger.warn(`${messages.length - MAX_PRINTED_MESSAGES} more warnings`);
   }
 }
 
-async function runRender(invocation: Invocation, out: OutputStreams): Promise<number> {
-  const { bytes, label } = await readSource(invocation, out);
+async function runRender(
+  invocation: Invocation,
+  out: OutputStreams,
+  logger: Logger,
+): Promise<number> {
+  const { bytes, label } = await readSource(invocation, logger);
 
   if (bytes.byteLength > WARN_BYTES) {
-    out.stderr(`mat: ${label} is ${bytes.byteLength} bytes; this may take a moment\n`);
+    logger.warn(`${label} is ${bytes.byteLength} bytes; this may take a moment`);
   }
 
   const markdown = decodeMarkdown(bytes, label);
@@ -171,7 +179,7 @@ async function runRender(invocation: Invocation, out: OutputStreams): Promise<nu
     embedMode: invocation.output === undefined ? 'cache' : 'inline',
   });
 
-  reportMessages(messages, out);
+  reportMessages(messages, logger);
 
   if (toStdout) {
     out.stdout(html);
@@ -209,12 +217,12 @@ async function runRender(invocation: Invocation, out: OutputStreams): Promise<nu
   const previewUrl = pathToFileURL(previewPath).href;
 
   if (!(await openInBrowser(previewUrl))) {
-    out.stderr(`mat: could not open a browser; the preview is at ${previewUrl}\n`);
+    logger.error(`could not open a browser; the preview is at ${previewUrl}`);
 
     return EXIT_BROWSER_LAUNCH_FAILED;
   }
 
-  out.stderr(`${previewUrl}\n`);
+  logger.success(previewUrl);
 
   return EXIT_SUCCESS;
 }
@@ -223,6 +231,8 @@ export async function main(
   argv: readonly string[],
   out: OutputStreams = PROCESS_STREAMS,
 ): Promise<number> {
+  const logger = createLogger(out.stderr, out.interactive === true);
+
   try {
     const parsed = await runSafely(renderCommand, [...argv]);
 
@@ -238,10 +248,10 @@ export async function main(
       return exitCode === 0 ? EXIT_SUCCESS : EXIT_USAGE_ERROR;
     }
 
-    return await runRender(parsed.value, out);
+    return await runRender(parsed.value, out, logger);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    out.stderr(`mat: ${reason}\n`);
+    logger.error(reason);
 
     return EXIT_RUNTIME_ERROR;
   }
