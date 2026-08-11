@@ -337,7 +337,7 @@ SUCH DAMAGE.
 ## The unified, remark and rehype stack
 
 The Markdown pipeline is unified with the remark and rehype plugins around it. Of the
-120 packages listed below, 110 carry the same MIT grant word for word; they differ only in
+121 packages listed below, 111 carry the same MIT grant word for word; they differ only in
 the copyright line and in whether the header reads `(The MIT License)`, `The MIT License (MIT)` or
 `MIT License`. The grant is reproduced here once, from `unified`; every package's own copyright
 line is in the table.
@@ -389,6 +389,11 @@ PERFORMANCE OF THIS SOFTWARE.
 
 One package, `didyoumean` — cmd-ts uses it to suggest the flag you probably meant — is Apache-2.0.
 Its licence file is the standard text reproduced in Appendix A; the copyright line is in the table.
+
+`consola` inlines code from `defu` and `std-env` (both MIT, same copyright holder as `consola`
+itself), and its licence file additionally carries the MIT notices of the clack prompt code it
+builds on (Copyright (c) Nate Moore) and of the colorette colour code (Copyright © Jorge Bucaran
+<https://jorgebucaran.com>); both share the MIT grant above.
 
 One package, `entities`, is BSD-2-Clause. Its second clause is what makes reproducing these notices
 mandatory for a binary distribution:
@@ -508,6 +513,7 @@ vscode-oniguruma have their own sections above and are not repeated.
 | `cmd-ts` | 0.15.0 | MIT | Copyright (c) 2020 Gal Schlezinger |
 | `comma-separated-tokens` | 2.0.3 | MIT | Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com> |
 | `commander` | 8.3.0 | MIT | Copyright (c) 2011 TJ Holowaychuk <tj@vision-media.ca> |
+| `consola` | 3.4.2 | MIT | Copyright (c) Pooya Parsa <pooya@pi0.io> |
 | `debug` | 4.4.3 | MIT | Copyright (c) 2014-2017 TJ Holowaychuk <tj@vision-media.ca> |
 | `decode-named-character-reference` | 1.3.0 | MIT | Copyright (c) Titus Wormer <tituswormer@gmail.com> |
 | `dequal` | 2.0.3 | MIT | Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com) |
