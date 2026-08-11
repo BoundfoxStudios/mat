@@ -392,8 +392,9 @@ Its licence file is the standard text reproduced in Appendix A; the copyright li
 
 `consola` inlines code from `defu` and `std-env` (both MIT, same copyright holder as `consola`
 itself), and its licence file additionally carries the MIT notices of the clack prompt code it
-builds on (Copyright (c) Nate Moore) and of the colorette colour code (Copyright © Jorge Bucaran
-<https://jorgebucaran.com>); both share the MIT grant above.
+builds on (Copyright (c) Nate Moore), whose grant matches the one above word for word, and of the
+colorette colour code (Copyright © Jorge Bucaran <https://jorgebucaran.com>), whose grant differs
+from it only in quoting `'Software'` and `'AS IS'` with single quotes.
 
 One package, `entities`, is BSD-2-Clause. Its second clause is what makes reproducing these notices
 mandatory for a binary distribution:
