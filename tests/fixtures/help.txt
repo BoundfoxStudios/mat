@@ -1,0 +1,23 @@
+Usage: mat <file.md> [options]
+       mat - [options]
+
+Render a Markdown file the way GitHub does and open it in your browser.
+
+Options:
+  --output <path>    Write the HTML there and do not open a browser.
+                     Use - for stdout. The file is self-contained.
+  --theme <name>     auto, light or dark. Default: auto.
+  --flavor <name>    Markdown dialect. Default: gfm.
+  --base-dir <dir>   Directory relative links resolve against. Only valid
+                     with -, where there is no file to derive it from.
+                     Default: the current directory.
+  --help             Show this text.
+  --version          Show the version.
+
+Examples:
+  mat README.md
+  cat notes.md | mat -
+  mat README.md --output readme.html
+
+mat renders untrusted Markdown as trusted HTML. Only point it at documents you trust.
+The preview URL is stable per file, so a second run just needs a reload in the open tab.
