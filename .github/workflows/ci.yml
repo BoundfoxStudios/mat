@@ -19,9 +19,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -69,23 +69,19 @@ jobs:
           # artefact that ships. darwin has no choice in the matter: `bun build --compile` produces
           # binaries that fail `codesign -v` and die with `Killed: 9` on Apple Silicon unless they
           # are built natively and ad-hoc signed on the spot (oven-sh/bun#32159).
-          #
-          # `macos-*-intel` is the only way to get an x86_64 mac: `macos-latest` is arm64, and the
-          # `macos-13` label that used to serve this purpose was retired in December 2025. Do not
-          # replace it with a `-latest` form — there is none for Intel.
           - { runner: ubuntu-latest, triple: bun-linux-x64, binary: mat-linux-x64 }
           - { runner: ubuntu-24.04-arm, triple: bun-linux-arm64, binary: mat-linux-arm64 }
           - { runner: windows-latest, triple: bun-windows-x64, binary: mat-windows-x64.exe }
           - { runner: macos-latest, triple: bun-darwin-arm64, binary: mat-darwin-arm64 }
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache the compile target
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           # `bun build --compile` downloads the runtime for the target on first use.
           path: ~/.bun/install/cache
@@ -110,9 +106,9 @@ jobs:
           ./dist/${{ matrix.binary }} --version
           ./dist/${{ matrix.binary }} tests/fixtures/torture.md --output - > /dev/null
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@v7.0.1
         # Only on main, and only briefly. Each of these is a ~104 MiB Bun single-file binary, so
-        # the five together park roughly 500 MiB per run; at the default 90-day retention a private
+        # the four together park roughly 400 MiB per run; at the default 90-day retention a private
         # repository's Actions storage is gone within a handful of runs. What ships is built fresh
         # by the release workflow anyway — these are a debugging convenience, nothing more.
         if: github.event_name == 'push'
