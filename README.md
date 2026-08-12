@@ -82,9 +82,15 @@ committed. `bun run build -- --all` compiles every target.
 ## Third-party code
 
 The binary embeds Mermaid, the KaTeX stylesheet and fonts, github-markdown-css, the starry-night
-grammars, Oniguruma and the unified pipeline. An `--output` file carries a subset of that. Their
-licences, and the copyright notices they require you to pass on, are in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+grammars, Oniguruma and the unified pipeline. An `--output` file carries a subset of that. The
+licences of every npm package in the tree, and the copyright notices they require you to pass on,
+are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), which CI regenerates with
+license-checker-rseidelsohn. Two components fall outside the npm tree and carry their notices as
+verbatim vendor files: the 694 grammar licences in
+[third-party/starry-night-grammars-notice.txt](third-party/starry-night-grammars-notice.txt) and
+the Oniguruma licence in
+[third-party/vscode-oniguruma-notice.txt](third-party/vscode-oniguruma-notice.txt). Pass all three
+files on when you redistribute.
 
 ## License
 

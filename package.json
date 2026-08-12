@@ -39,6 +39,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "notices": "bunx license-checker-rseidelsohn@5.0.1 --markdown --excludePrivatePackages --excludePackagesStartingWith \"@biomejs;@types/;@typescript/;typescript;playwright;bun-types;undici-types;fsevents\" --customPath scripts/third-party-notices-format.json --out THIRD-PARTY-NOTICES.md",
     "ci": "biome ci ."
   },
   "dependencies": {

@@ -2,9 +2,6 @@
  * A `bun build --compile` binary cannot read sibling files at runtime: `__dirname` retains the
  * *build* machine's path, `import.meta.dir` becomes the virtual `/$bunfs/root`, and `/$bunfs` is
  * opaque — `existsSync` returns false for every path including its own root. Hence constants.
- *
- * Everything embedded here is redistributed, by the binary and by every `--output` file. A new
- * asset needs its licence added to THIRD-PARTY-NOTICES.md before it ships.
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';

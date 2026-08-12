@@ -110,6 +110,10 @@ const NOTICES: ReadonlyArray<{ fileName: string; repositoryPath: string }> = [
     fileName: 'starry-night-grammars-notice.txt',
     repositoryPath: join('third-party', 'starry-night-grammars-notice.txt'),
   },
+  {
+    fileName: 'vscode-oniguruma-notice.txt',
+    repositoryPath: join('third-party', 'vscode-oniguruma-notice.txt'),
+  },
 ];
 
 const noticeBlocks = NOTICES.map((notice) =>
