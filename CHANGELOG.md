@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.2](https://github.com/BoundfoxStudios/mat/compare/v0.1.1...v0.1.2) (2026-08-12)
+
+
+### Features
+
+* check for a newer release in the background ([2264b4a](https://github.com/BoundfoxStudios/mat/commit/2264b4a1844fc4842a1dd6a30614bb35cbaf7a72))
+* log the chosen default document to stderr ([6fe0be4](https://github.com/BoundfoxStudios/mat/commit/6fe0be4e769b41722c5c59eaf03a31043064d5db))
+* route CLI diagnostics through consola ([54d3af3](https://github.com/BoundfoxStudios/mat/commit/54d3af3a04db03cb8d788ccfac098441c8d1bb96))
+
+
+### Bug Fixes
+
+* ship the Oniguruma licence notice alongside the binary ([57ceb43](https://github.com/BoundfoxStudios/mat/commit/57ceb43ea4ca8697d7dc9f57fdb1a37975395bbe))
+
 ## [0.1.1](https://github.com/BoundfoxStudios/mat/compare/v0.1.0...v0.1.1) (2026-08-11)
 
 
