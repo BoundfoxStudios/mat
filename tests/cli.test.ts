@@ -120,7 +120,17 @@ describe('arguments', () => {
       theme: 'auto',
       flavor: 'gfm',
       baseDir: undefined,
+      followLinks: false,
     });
+  });
+
+  test('accepts both spellings of follow-links', async () => {
+    for (const args of [
+      ['note.md', '--follow-links'],
+      ['note.md', '-f'],
+    ]) {
+      expect(await parse(args)).toMatchObject({ followLinks: true });
+    }
   });
 
   test('accepts both spellings of an option value', async () => {
@@ -157,6 +167,18 @@ describe('arguments', () => {
     ['base-dir with a file', ['a.md', '--base-dir=/tmp'], '--base-dir is only valid'],
     // The default document is a file too, so its own directory wins here as well.
     ['base-dir without a file', ['--base-dir=/tmp'], '--base-dir is only valid'],
+    // `--output` produces a single self-contained file; following links needs one preview file
+    // per document.
+    [
+      'follow-links with an output file',
+      ['a.md', '--follow-links', '--output', 'a.html'],
+      '--follow-links is only valid',
+    ],
+    [
+      'the short flag with an output file',
+      ['a.md', '-f', '--output', 'a.html'],
+      '--follow-links is only valid',
+    ],
   ];
 
   for (const [name, args, expected] of rejected) {

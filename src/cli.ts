@@ -12,6 +12,7 @@ import { createLogger, type Logger } from './cli/logger.ts';
 import { startUpdateCheck } from './cli/update-check.ts';
 import { MAT_VERSION } from './generated/assets.ts';
 import { render } from './render/index.ts';
+import type { LinkAdmission } from './render/pipeline.ts';
 
 export const EXIT_SUCCESS = 0;
 export const EXIT_RUNTIME_ERROR = 1;
@@ -47,23 +48,140 @@ function readStdin(): Uint8Array {
   return readFileSync(0);
 }
 
-export function decodeMarkdown(bytes: Uint8Array, label: string): string {
+type DecodedMarkdown = { markdown: string } | { problem: string };
+
+function decodeBytes(bytes: Uint8Array): DecodedMarkdown {
   if (bytes.byteLength > MAX_BYTES) {
-    throw new RuntimeError(
-      `${label}: ${bytes.byteLength} bytes exceeds the ${MAX_BYTES} byte limit`,
-    );
+    return { problem: `${bytes.byteLength} bytes exceeds the ${MAX_BYTES} byte limit` };
   }
 
   if (bytes.subarray(0, BINARY_SNIFF_BYTES).includes(0)) {
-    throw new RuntimeError(`${label}: looks like a binary file`);
+    return { problem: 'looks like a binary file' };
   }
 
   try {
     // A BOM needs no handling: micromark is transparent to it, even before front matter.
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return { markdown: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
   } catch {
-    throw new RuntimeError(`${label}: not valid UTF-8`);
+    return { problem: 'not valid UTF-8' };
   }
+}
+
+export function decodeMarkdown(bytes: Uint8Array, label: string): string {
+  const decoded = decodeBytes(bytes);
+
+  if ('problem' in decoded) {
+    throw new RuntimeError(`${label}: ${decoded.problem}`);
+  }
+
+  return decoded.markdown;
+}
+
+interface QueuedDocument {
+  realPath: string;
+  markdown: string;
+}
+
+export interface LinkFollowQueue {
+  admit(absolutePath: string): LinkAdmission;
+  nextQueued(): QueuedDocument | undefined;
+}
+
+/**
+ * Admission decides at rewrite time whether a target will actually render — existence alone is
+ * not enough, because a link already rewritten to a preview would dangle if the target later
+ * turned out binary or oversized. The price is that every admitted file is read here; the decoded
+ * markdown travels on the queue so it is read exactly once.
+ *
+ * Decisions are keyed by real path, so symlinked spellings of one document share a verdict, a
+ * single render, and — through `previewPathFor` hashing the real path — one preview file.
+ */
+export function createLinkFollowQueue(rootRealPath: string | undefined): LinkFollowQueue {
+  const admissions = new Map<string, LinkAdmission>();
+  const queue: QueuedDocument[] = [];
+
+  if (rootRealPath !== undefined) {
+    admissions.set(rootRealPath, {
+      previewUrl: pathToFileURL(previewPathFor(rootRealPath)).href,
+    });
+  }
+
+  function admitNew(absolutePath: string): { realPath?: string; admission: LinkAdmission } {
+    let realPath: string;
+
+    try {
+      realPath = realpathSync(absolutePath);
+    } catch (error) {
+      return { admission: { problem: describeFileSystemError(error) } };
+    }
+
+    const decided = admissions.get(realPath);
+
+    if (decided !== undefined) {
+      return { realPath, admission: decided };
+    }
+
+    let bytes: Uint8Array;
+
+    try {
+      const stats = statSync(realPath);
+
+      if (stats.isDirectory()) {
+        return { realPath, admission: { problem: 'is a directory' } };
+      }
+
+      // A FIFO defeats both the size guard (it reports 0) and `readFileSync`, which would block
+      // on it until a writer appears; a device file reads without end.
+      if (!stats.isFile()) {
+        return { realPath, admission: { problem: 'not a regular file' } };
+      }
+
+      // Before reading, for the same reason `readSource` checks first: being told a file is too
+      // large must not cost its size in memory.
+      if (stats.size > MAX_BYTES) {
+        return {
+          realPath,
+          admission: { problem: `${stats.size} bytes exceeds the ${MAX_BYTES} byte limit` },
+        };
+      }
+
+      bytes = readFileSync(realPath);
+    } catch (error) {
+      return { realPath, admission: { problem: describeFileSystemError(error) } };
+    }
+
+    const decoded = decodeBytes(bytes);
+
+    if ('problem' in decoded) {
+      return { realPath, admission: { problem: decoded.problem } };
+    }
+
+    queue.push({ realPath, markdown: decoded.markdown });
+
+    return { realPath, admission: { previewUrl: pathToFileURL(previewPathFor(realPath)).href } };
+  }
+
+  return {
+    admit(absolutePath) {
+      const known = admissions.get(absolutePath);
+
+      if (known !== undefined) {
+        return known;
+      }
+
+      const { realPath, admission } = admitNew(absolutePath);
+      admissions.set(absolutePath, admission);
+
+      if (realPath !== undefined) {
+        admissions.set(realPath, admission);
+      }
+
+      return admission;
+    },
+    nextQueued() {
+      return queue.shift();
+    },
+  };
 }
 
 /** Called without a file, `mat` renders whatever the current directory offers first. */
@@ -153,6 +271,15 @@ function reportMessages(messages: readonly string[], logger: Logger): void {
   }
 }
 
+function writePreview(previewPath: string, html: string): void {
+  try {
+    ensureOwnedDirectory(previewDirectory());
+    writeAtomically(previewPath, html);
+  } catch (error) {
+    throw new RuntimeError(`${previewPath}: ${describeFileSystemError(error)}`);
+  }
+}
+
 async function runRender(
   invocation: Invocation,
   out: OutputStreams,
@@ -168,6 +295,7 @@ async function runRender(
   const realPath = invocation.source === '-' ? undefined : label;
   const toStdout = invocation.output === '-';
   const toFile = invocation.output !== undefined && !toStdout;
+  const followQueue = invocation.followLinks ? createLinkFollowQueue(realPath) : undefined;
 
   const { html, messages } = await render(markdown, {
     title: realPath === undefined ? 'stdin' : basename(realPath),
@@ -178,9 +306,35 @@ async function runRender(
     // Anything the user keeps has to stand on its own; only the throwaway preview may point into
     // the shared cache.
     embedMode: invocation.output === undefined ? 'cache' : 'inline',
+    followLinks: followQueue,
   });
 
-  reportMessages(messages, logger);
+  const collectedMessages = [...messages];
+
+  if (followQueue !== undefined) {
+    for (
+      let queued = followQueue.nextQueued();
+      queued !== undefined;
+      queued = followQueue.nextQueued()
+    ) {
+      const linked = await render(queued.markdown, {
+        title: basename(queued.realPath),
+        theme: invocation.theme,
+        flavor: invocation.flavor,
+        baseDir: dirname(queued.realPath),
+        linkMode: 'absolute',
+        embedMode: 'cache',
+        followLinks: followQueue,
+      });
+
+      writePreview(previewPathFor(queued.realPath), linked.html);
+
+      const documentLabel = relative(process.cwd(), queued.realPath);
+      collectedMessages.push(...linked.messages.map((message) => `${documentLabel}: ${message}`));
+    }
+  }
+
+  reportMessages(collectedMessages, logger);
 
   if (toStdout) {
     out.stdout(html);
@@ -207,12 +361,7 @@ async function runRender(
       ? join(previewDirectory(), `${createHash('sha256').update(markdown).digest('hex')}.html`)
       : previewPathFor(realPath);
 
-  try {
-    ensureOwnedDirectory(previewDirectory());
-    writeAtomically(previewPath, html);
-  } catch (error) {
-    throw new RuntimeError(`${previewPath}: ${describeFileSystemError(error)}`);
-  }
+  writePreview(previewPath, html);
 
   // Never string concatenation: it breaks on Windows paths, spaces and umlauts.
   const previewUrl = pathToFileURL(previewPath).href;

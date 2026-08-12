@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Root } from 'hast';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import type { LinkFollower, RenderContext } from '../pipeline.ts';
 
 /** hast property names: `srcset` arrives as `srcSet`. */
 const URL_PROPERTIES: ReadonlyMap<string, readonly string[]> = new Map([
@@ -46,30 +47,122 @@ function isAlreadyResolved(value: string): boolean {
  * Query and fragment are split off first: they belong to the URL, not to the path, and
  * `pathToFileURL` would percent-encode the `#` in `./other.md#section` into the file name.
  */
-function toFileUrl(value: string, baseDir: string): string {
-  if (isAlreadyResolved(value)) {
-    return value;
-  }
-
+function splitSuffix(value: string): { path: string; suffix: string } | undefined {
   const separator = value.search(/[?#]/);
   const path = separator === -1 ? value : value.slice(0, separator);
   const suffix = separator === -1 ? '' : value.slice(separator);
 
-  if (path === '') {
-    return value;
+  return path === '' ? undefined : { path, suffix };
+}
+
+interface LocalTarget {
+  absolutePath: string;
+  suffix: string;
+}
+
+function parseLocalTarget(
+  value: string,
+  baseDir: string,
+): (LocalTarget & { decodedPath: string }) | undefined {
+  if (isAlreadyResolved(value)) {
+    return undefined;
+  }
+
+  const split = splitSuffix(value);
+
+  if (split === undefined) {
+    return undefined;
   }
 
   let decoded: string;
 
   try {
-    decoded = decodeURIComponent(path);
+    decoded = decodeURIComponent(split.path);
   } catch {
-    decoded = path;
+    decoded = split.path;
   }
 
   // `pathToFileURL` silently resolves a relative input against the cwd rather than throwing, and
   // the cwd is wherever the user happened to run `mat` from.
-  return `${pathToFileURL(resolve(baseDir, decoded)).href}${suffix}`;
+  return { absolutePath: resolve(baseDir, decoded), suffix: split.suffix, decodedPath: decoded };
+}
+
+function toFileUrl(value: string, baseDir: string): string {
+  const target = parseLocalTarget(value, baseDir);
+
+  return target === undefined
+    ? value
+    : `${pathToFileURL(target.absolutePath).href}${target.suffix}`;
+}
+
+const MARKDOWN_EXTENSION = /\.(?:md|markdown)$/i;
+
+/**
+ * On Windows the url policy has already turned drive-letter paths like `C:/docs/setup.md` into
+ * `file:` URLs by the time this plugin runs, so following them means reading the path back out of
+ * URL form. Literal `file:` links in a document take the same route.
+ */
+function parseFileUrlTarget(value: string): LocalTarget | undefined {
+  if (!/^file:/i.test(value)) {
+    return undefined;
+  }
+
+  const split = splitSuffix(value);
+
+  if (split === undefined) {
+    return undefined;
+  }
+
+  try {
+    return { absolutePath: fileURLToPath(split.path), suffix: split.suffix };
+  } catch {
+    return undefined;
+  }
+}
+
+function followedUrl(
+  target: LocalTarget,
+  value: string,
+  follower: LinkFollower,
+  file: VFile,
+  keptUrl: string,
+): string {
+  const admission = follower.admit(target.absolutePath);
+
+  if ('problem' in admission) {
+    file.message(`${value}: ${admission.problem}, the link is not followed`);
+
+    return keptUrl;
+  }
+
+  return `${admission.previewUrl}${target.suffix}`;
+}
+
+function resolveAnchor(value: string, context: RenderContext, file: VFile): string {
+  const follower = context.followLinks;
+  const local = parseLocalTarget(value, context.baseDir);
+
+  if (local === undefined) {
+    if (follower === undefined) {
+      return value;
+    }
+
+    const fileUrl = parseFileUrlTarget(value);
+
+    return fileUrl === undefined || !MARKDOWN_EXTENSION.test(fileUrl.absolutePath)
+      ? value
+      : followedUrl(fileUrl, value, follower, file, value);
+  }
+
+  const sourceUrl = `${pathToFileURL(local.absolutePath).href}${local.suffix}`;
+
+  // Tested on the path component as written, not the resolved path: `resolve` strips a trailing
+  // slash, and `setup.md/` names a directory, not a document.
+  if (follower === undefined || !MARKDOWN_EXTENSION.test(local.decodedPath)) {
+    return sourceUrl;
+  }
+
+  return followedUrl(local, value, follower, file, sourceUrl);
 }
 
 /**
@@ -128,7 +221,9 @@ export function rehypeResolveAssets() {
         const resolved =
           property === 'srcSet'
             ? resolveSourceSet(value, context.baseDir)
-            : toFileUrl(value, context.baseDir);
+            : node.tagName === 'a'
+              ? resolveAnchor(value, context, file)
+              : toFileUrl(value, context.baseDir);
 
         node.properties[property] = resolved;
 

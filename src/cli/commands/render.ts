@@ -1,10 +1,10 @@
-import { command, optional, positional } from 'cmd-ts';
+import { command, flag, optional, positional } from 'cmd-ts';
 import type { ParseContext, ParsingResult } from 'cmd-ts/dist/cjs/argparser';
 import { DEFAULT_FLAVOR_NAME } from '../../flavors/index.ts';
 import { MAT_VERSION, type ThemeName } from '../../generated/assets.ts';
 import { directoryType, flavorType, pathType, themeType } from '../argument-types.ts';
 import { DEFAULT_DOCUMENTS } from '../default-document.ts';
-import { longOptionsNamed, valuedOption } from '../options.ts';
+import { longOptionsNamed, optionsNamed, valuedOption } from '../options.ts';
 
 export interface Invocation {
   source: string | undefined;
@@ -12,6 +12,7 @@ export interface Invocation {
   theme: ThemeName;
   flavor: string;
   baseDir: string | undefined;
+  followLinks: boolean;
 }
 
 const renderArguments = command({
@@ -22,6 +23,10 @@ const renderArguments = command({
     { description: 'Render a file and open it in the browser', command: 'mat README.md' },
     { description: "Render this directory's first standard document", command: 'mat' },
     { description: 'Read the document from stdin', command: 'cat notes.md | mat -' },
+    {
+      description: 'Also render every local Markdown file the document links to',
+      command: 'mat README.md -f',
+    },
     {
       description: 'Write a self-contained file and open nothing',
       command: 'mat README.md --output readme.html',
@@ -56,6 +61,11 @@ const renderArguments = command({
       description:
         'Directory relative links resolve against, only valid with -. Default: the current directory.',
     }),
+    followLinks: flag({
+      long: 'follow-links',
+      short: 'f',
+      description: 'Also render linked local Markdown files and point their links at the previews.',
+    }),
   },
   handler: (invocation): Invocation => invocation,
 });
@@ -79,6 +89,22 @@ export const renderCommand = {
             {
               nodes: longOptionsNamed(context.nodes, 'base-dir'),
               message: '--base-dir is only valid together with -',
+            },
+          ],
+        },
+      };
+    }
+
+    if (parsed._tag === 'ok' && parsed.value.followLinks && parsed.value.output !== undefined) {
+      // `--output` produces a single self-contained file; following links needs one preview file
+      // per document, which that contract cannot hold.
+      return {
+        _tag: 'error',
+        error: {
+          errors: [
+            {
+              nodes: optionsNamed(context.nodes, 'follow-links', 'f'),
+              message: '--follow-links is only valid without --output',
             },
           ],
         },

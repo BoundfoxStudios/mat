@@ -37,6 +37,7 @@ export async function render(markdown: string, options: RenderOptions): Promise<
     baseDir: options.baseDir,
     linkMode: options.linkMode,
     embedMode: options.embedMode,
+    followLinks: options.followLinks,
   };
 
   const processed = await getProcessor(flavor).process(file);
