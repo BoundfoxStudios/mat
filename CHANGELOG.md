@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/BoundfoxStudios/mat/compare/v0.1.2...v0.1.3) (2026-08-12)
+
+
+### Features
+
+* render linked local Markdown files behind --follow-links ([aa08bdd](https://github.com/BoundfoxStudios/mat/commit/aa08bdde94edfbfd1fbc7ef278c5b731e766aeb0)), closes [#13](https://github.com/BoundfoxStudios/mat/issues/13)
+
+
+### Bug Fixes
+
+* refuse a non-regular root document instead of hanging ([a3f2a25](https://github.com/BoundfoxStudios/mat/commit/a3f2a25587a946b889c73d2066e8c6e33191ef99)), closes [#17](https://github.com/BoundfoxStudios/mat/issues/17)
+
 ## [0.1.2](https://github.com/BoundfoxStudios/mat/compare/v0.1.1...v0.1.2) (2026-08-12)
 
 
