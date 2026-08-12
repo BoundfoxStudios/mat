@@ -4,6 +4,9 @@
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "bundler",
+    // Bun resolves the `node` condition of package exports at runtime; without this, tsc falls
+    // back to `default` and checks against a package's browser types (consola's lack `fancy`).
+    "customConditions": ["node"],
     "moduleDetection": "force",
     "types": ["bun"],
     "allowImportingTsExtensions": true,

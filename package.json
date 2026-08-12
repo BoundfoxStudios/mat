@@ -44,6 +44,7 @@
   "dependencies": {
     "@wooorm/starry-night": "3.10.0",
     "cmd-ts": "0.15.0",
+    "consola": "3.4.2",
     "github-slugger": "2.0.0",
     "hast-util-to-html": "9.0.5",
     "katex": "0.16.46",
