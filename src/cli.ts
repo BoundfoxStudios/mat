@@ -9,6 +9,7 @@ import { type Invocation, renderCommand } from './cli/commands/render.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.ts';
 import { describeFileSystemError, RuntimeError } from './cli/errors.ts';
 import { createLogger, type Logger } from './cli/logger.ts';
+import { startUpdateCheck } from './cli/update-check.ts';
 import { MAT_VERSION } from './generated/assets.ts';
 import { render } from './render/index.ts';
 
@@ -227,9 +228,14 @@ async function runRender(
   return EXIT_SUCCESS;
 }
 
+/**
+ * `checkForUpdate` is injectable for the same reason `out` is: the real one talks to GitHub
+ * and to the shared temp directory, neither of which a test may touch.
+ */
 export async function main(
   argv: readonly string[],
   out: OutputStreams = PROCESS_STREAMS,
+  checkForUpdate: typeof startUpdateCheck = startUpdateCheck,
 ): Promise<number> {
   const logger = createLogger(out.stderr, out.interactive === true);
 
@@ -248,7 +254,22 @@ export async function main(
       return exitCode === 0 ? EXIT_SUCCESS : EXIT_USAGE_ERROR;
     }
 
-    return await runRender(parsed.value, out, logger);
+    // Starts only for a real render — `--help`, `--version` and usage errors returned above —
+    // and only where someone watches stderr: never under CI, never when it is redirected.
+    const updateCheck = checkForUpdate({
+      enabled:
+        process.env.MAT_NO_UPDATE_CHECK === undefined &&
+        process.env.CI === undefined &&
+        out.interactive === true,
+      currentVersion: MAT_VERSION,
+      logger,
+    });
+
+    try {
+      return await runRender(parsed.value, out, logger);
+    } finally {
+      updateCheck.report();
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     logger.error(reason);
