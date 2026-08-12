@@ -1,4 +1,4 @@
-import { command, flag, optional, positional } from 'cmd-ts';
+import { boolean, command, flag, optional, positional } from 'cmd-ts';
 import type { ParseContext, ParsingResult } from 'cmd-ts/dist/cjs/argparser';
 import { DEFAULT_FLAVOR_NAME } from '../../flavors/index.ts';
 import { MAT_VERSION, type ThemeName } from '../../generated/assets.ts';
@@ -12,7 +12,7 @@ export interface Invocation {
   theme: ThemeName;
   flavor: string;
   baseDir: string | undefined;
-  followLinks: boolean;
+  followLinks: boolean | undefined;
 }
 
 const renderArguments = command({
@@ -64,7 +64,11 @@ const renderArguments = command({
     followLinks: flag({
       long: 'follow-links',
       short: 'f',
-      description: 'Also render linked local Markdown files and point their links at the previews.',
+      // `optional` instead of the built-in default of false: only an explicit flag may override
+      // the configuration file, so "not given" has to stay distinguishable from "=false".
+      type: optional(boolean),
+      description:
+        'Also render linked local Markdown files and point their links at the previews. =false overrides the configuration file.',
     }),
   },
   handler: (invocation): Invocation => invocation,
