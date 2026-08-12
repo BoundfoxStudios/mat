@@ -1,5 +1,5 @@
 import { statSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 
 export const DEFAULT_DOCUMENTS: readonly string[] = [
   'index.md',
@@ -9,9 +9,13 @@ export const DEFAULT_DOCUMENTS: readonly string[] = [
   'SPEC.md',
 ];
 
-export function findDefaultDocument(directory: string): string | undefined {
-  for (const candidate of DEFAULT_DOCUMENTS) {
-    const path = join(directory, candidate);
+export function findDefaultDocument(
+  directory: string,
+  candidates: readonly string[] = DEFAULT_DOCUMENTS,
+): string | undefined {
+  for (const candidate of candidates) {
+    // `resolve`, not `join`: a configured candidate may be an absolute path.
+    const path = resolve(directory, candidate);
 
     try {
       if (statSync(path).isFile()) {

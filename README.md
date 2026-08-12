@@ -45,8 +45,8 @@ $ mat README.md --theme dark         # force a theme; default follows the OS
 Run `mat --help` for the full list.
 
 Without a file, `mat` renders the first of `index.md`, `README.md`, `docs/index.md`,
-`docs/README.md` and `SPEC.md` that exists in the current directory. If none does, it exits `1` and
-tells you what it looked for.
+`docs/README.md` and `SPEC.md` that exists in the current directory — the list is
+[configurable](#configuration). If none exists, it exits `1` and tells you what it looked for.
 
 The preview URL is stable per file, so running `mat` again on the same document reuses the tab —
 a reload is enough, and you keep your scroll position.
@@ -59,13 +59,35 @@ on stderr.
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.
 
+### Configuration
+
+`mat` reads optional defaults from `$XDG_CONFIG_HOME/mat/config.json` —
+`~/.config/mat/config.json` unless `XDG_CONFIG_HOME` is set:
+
+```json
+{
+  "defaultDocuments": ["NOTES.md", "README.md"],
+  "followLinks": true
+}
+```
+
+Both keys are optional. `defaultDocuments` replaces the built-in list of documents `mat` tries
+when called without a file, in the order given. `followLinks` makes `--follow-links` the default;
+`--follow-links=false` turns it back off for one call. A flag on the command line always wins over
+the file, and `--output` ignores a configured `followLinks`, because a single self-contained file
+cannot hold the linked previews.
+
+A configuration file that is not valid JSON, or that contains unknown keys or wrong types, is an
+error: `mat` names the file and the problem, and exits `2`. Having no configuration file is the
+normal case — everything has a default.
+
 ### Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
 | `1` | The file could not be read or rendered |
-| `2` | Wrong invocation |
+| `2` | Wrong invocation or an invalid configuration file |
 | `3` | The HTML was written, but no browser could be started. The URL is on stderr. |
 
 Code `3` exists so that `mat file.md || fallback` stays correct: the preview is there, only the

@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { runSafely } from 'cmd-ts';
@@ -29,17 +37,23 @@ interface RunResult {
 
 // Capturing via `main`'s stream parameters rather than patching `process.stdout.write`: `bun test`
 // runs every file in one interleaved process, so the patch would leak into the others. Cases that
-// need a private `$TMPDIR` or a controlled `PATH` use `spawn` instead.
+// need a private `$TMPDIR` or a controlled `PATH` use `spawn` instead. The configuration loader is
+// stubbed out so no test ever depends on a config file on the machine running the suite.
 async function run(args: readonly string[]): Promise<RunResult> {
   const chunks = { stdout: '', stderr: '' };
-  const code = await main(args, {
-    stdout: (text) => {
-      chunks.stdout += text;
+  const code = await main(
+    args,
+    {
+      stdout: (text) => {
+        chunks.stdout += text;
+      },
+      stderr: (text) => {
+        chunks.stderr += text;
+      },
     },
-    stderr: (text) => {
-      chunks.stderr += text;
-    },
-  });
+    undefined,
+    () => ({}),
+  );
 
   return { code, ...chunks };
 }
@@ -53,8 +67,14 @@ async function run(args: readonly string[]): Promise<RunResult> {
 const SPAWN_TIMEOUT = 180_000;
 
 // `TMPDIR` and `PATH` go into the *child* environment; setting them on `process.env` would hit
-// whatever other test file is running at that moment.
-async function spawn(args: readonly string[], stdin?: string, cwd?: string): Promise<RunResult> {
+// whatever other test file is running at that moment. `XDG_CONFIG_HOME` points into the scratch
+// directory so no child ever reads a config file of the machine running the suite.
+async function spawn(
+  args: readonly string[],
+  stdin?: string,
+  cwd?: string,
+  env?: Record<string, string>,
+): Promise<RunResult> {
   const emptyPath = join(scratch, 'no-launchers');
   mkdirSync(emptyPath, { recursive: true });
 
@@ -77,7 +97,13 @@ async function spawn(args: readonly string[], stdin?: string, cwd?: string): Pro
   }
 
   const child = Bun.spawn([process.execPath, 'run', CLI, ...args], {
-    env: { ...process.env, TMPDIR: scratch, PATH: emptyPath },
+    env: {
+      ...process.env,
+      TMPDIR: scratch,
+      PATH: emptyPath,
+      XDG_CONFIG_HOME: join(scratch, 'config-home'),
+      ...env,
+    },
     cwd,
     stdin: stdinSource,
     stdout: Bun.file(stdoutPath),
@@ -120,7 +146,8 @@ describe('arguments', () => {
       theme: 'auto',
       flavor: 'gfm',
       baseDir: undefined,
-      followLinks: false,
+      // Not false: only "not given" lets a configuration file supply the default.
+      followLinks: undefined,
     });
   });
 
@@ -131,6 +158,11 @@ describe('arguments', () => {
     ]) {
       expect(await parse(args)).toMatchObject({ followLinks: true });
     }
+  });
+
+  test('accepts an explicit follow-links value', async () => {
+    expect(await parse(['note.md', '--follow-links=false'])).toMatchObject({ followLinks: false });
+    expect(await parse(['note.md', '--follow-links=true'])).toMatchObject({ followLinks: true });
   });
 
   test('accepts both spellings of an option value', async () => {
@@ -161,6 +193,7 @@ describe('arguments', () => {
     // Without this, cmd-ts falls back to the default and silently ignores what was typed.
     ['a value-less option', ['a.md', '--output'], 'No value provided for --output'],
     ['unknown theme', ['a.md', '--theme=neon'], "Invalid value 'neon'"],
+    ['a malformed follow-links value', ['a.md', '--follow-links=maybe'], 'expected value'],
     ['unknown flavor', ['a.md', '--flavor=gitlab'], "Invalid value 'gitlab'"],
     // With a file argument the base is always that file's directory; an override would silently
     // resolve images against a directory the document knows nothing about.
@@ -237,6 +270,21 @@ describe('default document', () => {
     expect(findDefaultDocument(workspace('empty'))).toBeUndefined();
   });
 
+  test('tries configured candidates instead of the built-in list', () => {
+    const directory = workspace('configured');
+    create(directory, 'README.md');
+    create(directory, 'NOTES.md');
+
+    expect(findDefaultDocument(directory, ['NOTES.md'])).toBe(join(directory, 'NOTES.md'));
+    expect(findDefaultDocument(directory, ['missing.md'])).toBeUndefined();
+  });
+
+  test('accepts an absolute configured candidate', () => {
+    const elsewhere = create(workspace('elsewhere'), 'notes.md');
+
+    expect(findDefaultDocument(workspace('empty-here'), [elsewhere])).toBe(elsewhere);
+  });
+
   test(
     'renders it when no file is given',
     async () => {
@@ -264,6 +312,151 @@ describe('default document', () => {
       expect(code).toBe(1);
       expect(stdout).toBe('');
       expect(stderr).toContain(DEFAULT_DOCUMENTS.join(', '));
+    },
+    SPAWN_TIMEOUT,
+  );
+});
+
+describe('configuration file', () => {
+  // The path `spawn` hands every child as `XDG_CONFIG_HOME`.
+  function writeConfiguration(contents: string): void {
+    const directory = join(scratch, 'config-home', 'mat');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'config.json'), contents);
+  }
+
+  function workspace(name: string, files: Record<string, string>): string {
+    const directory = join(scratch, name);
+
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const path = join(directory, relativePath);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, contents);
+    }
+
+    return directory;
+  }
+
+  function previews(): string[] {
+    return readdirSync(join(scratch, 'mat')).filter((name) => name.endsWith('.html'));
+  }
+
+  test(
+    'replaces the built-in default documents',
+    async () => {
+      const directory = workspace('documents', {
+        'README.md': '# Aus README',
+        'NOTES.md': '# Aus NOTES',
+      });
+      writeConfiguration('{"defaultDocuments": ["NOTES.md"]}');
+
+      const { code, stdout, stderr } = await spawn(['--output', '-'], undefined, directory);
+
+      expect(code).toBe(0);
+      expect(stderr).toContain('no file given, rendering NOTES.md');
+      expect(stdout).toContain('<h1 id="aus-notes">');
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'names the configured candidates when none exists',
+    async () => {
+      const directory = workspace('bare-documents', { 'README.md': '# x' });
+      writeConfiguration('{"defaultDocuments": ["NOTES.md", "TODO.md"]}');
+
+      const { code, stderr } = await spawn([], undefined, directory);
+
+      expect(code).toBe(1);
+      expect(stderr).toContain('NOTES.md, TODO.md');
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'rejects an invalid configuration with exit 2',
+    async () => {
+      const directory = workspace('invalid', { 'note.md': '# x' });
+      writeConfiguration('{"followLink": true}');
+
+      const { code, stdout, stderr } = await spawn(
+        ['note.md', '--output', '-'],
+        undefined,
+        directory,
+      );
+
+      expect(code).toBe(2);
+      expect(stdout).toBe('');
+      expect(stderr).toContain('config.json');
+      expect(stderr).toContain('unknown key "followLink"');
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'follows links by default when the configuration says so',
+    async () => {
+      const directory = workspace('follow', {
+        'a.md': '# A\n\n[b](b.md)',
+        'b.md': '# B',
+      });
+      writeConfiguration('{"followLinks": true}');
+
+      // Exit 3 is the no-browser path of this suite: the previews exist, only the launch failed.
+      const { code } = await spawn(['a.md'], undefined, directory);
+
+      expect(code).toBe(3);
+      expect(previews()).toHaveLength(2);
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'lets --follow-links=false override the configuration',
+    async () => {
+      const directory = workspace('override', {
+        'a.md': '# A\n\n[b](b.md)',
+        'b.md': '# B',
+      });
+      writeConfiguration('{"followLinks": true}');
+
+      const { code } = await spawn(['a.md', '--follow-links=false'], undefined, directory);
+
+      expect(code).toBe(3);
+      expect(previews()).toHaveLength(1);
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'keeps --help working with a broken configuration',
+    async () => {
+      writeConfiguration('{broken');
+
+      // The configuration is deliberately loaded after the --help/--version early returns:
+      // --help is the very command a user needs while diagnosing a broken file.
+      const { code, stdout } = await spawn(['--help']);
+
+      expect(code).toBe(0);
+      expect(stdout).toContain('FLAGS:');
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  test(
+    'suppresses a configured followLinks for --output instead of rejecting it',
+    async () => {
+      const directory = workspace('output', {
+        'a.md': '# A\n\n[b](b.md)',
+        'b.md': '# B',
+      });
+      writeConfiguration('{"followLinks": true}');
+
+      const { code, stdout } = await spawn(['a.md', '--output', '-'], undefined, directory);
+
+      expect(code).toBe(0);
+      // The link still points at the source, not at a preview that was never written.
+      expect(stdout).toMatch(/href="file:\/\/\S*\/b\.md"/);
     },
     SPAWN_TIMEOUT,
   );
@@ -314,6 +507,7 @@ describe('update check wiring', () => {
             settled: Promise.resolve(),
           };
         },
+        () => ({}),
       );
 
       return { captured, reports, code };

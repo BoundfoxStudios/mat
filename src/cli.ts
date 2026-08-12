@@ -6,8 +6,9 @@ import { runSafely } from 'cmd-ts';
 import { ensureOwnedDirectory, matDirectory, writeAtomically } from './assets/cache.ts';
 import { openInBrowser } from './browser.ts';
 import { type Invocation, renderCommand } from './cli/commands/render.ts';
+import { type Configuration, loadConfiguration } from './cli/config.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.ts';
-import { describeFileSystemError, RuntimeError } from './cli/errors.ts';
+import { ConfigurationError, describeFileSystemError, RuntimeError } from './cli/errors.ts';
 import { createLogger, type Logger } from './cli/logger.ts';
 import { startUpdateCheck } from './cli/update-check.ts';
 import { MAT_VERSION } from './generated/assets.ts';
@@ -185,12 +186,12 @@ export function createLinkFollowQueue(rootRealPath: string | undefined): LinkFol
 }
 
 /** Called without a file, `mat` renders whatever the current directory offers first. */
-function defaultSource(directory: string, logger: Logger): string {
-  const found = findDefaultDocument(directory);
+function defaultSource(directory: string, candidates: readonly string[], logger: Logger): string {
+  const found = findDefaultDocument(directory, candidates);
 
   if (found === undefined) {
     throw new RuntimeError(
-      `no file given, and none of ${DEFAULT_DOCUMENTS.join(', ')} exists in ${directory}`,
+      `no file given, and none of ${candidates.join(', ')} exists in ${directory}`,
     );
   }
 
@@ -201,13 +202,16 @@ function defaultSource(directory: string, logger: Logger): string {
 
 async function readSource(
   invocation: Invocation,
+  configuration: Configuration,
   logger: Logger,
 ): Promise<{ bytes: Uint8Array; label: string }> {
   if (invocation.source === '-') {
     return { bytes: readStdin(), label: '<stdin>' };
   }
 
-  const source = invocation.source ?? defaultSource(process.cwd(), logger);
+  const source =
+    invocation.source ??
+    defaultSource(process.cwd(), configuration.defaultDocuments ?? DEFAULT_DOCUMENTS, logger);
 
   try {
     const realPath = realpathSync(source);
@@ -288,10 +292,11 @@ function writePreview(previewPath: string, html: string): void {
 
 async function runRender(
   invocation: Invocation,
+  configuration: Configuration,
   out: OutputStreams,
   logger: Logger,
 ): Promise<number> {
-  const { bytes, label } = await readSource(invocation, logger);
+  const { bytes, label } = await readSource(invocation, configuration, logger);
 
   if (bytes.byteLength > WARN_BYTES) {
     logger.warn(`${label} is ${bytes.byteLength} bytes; this may take a moment`);
@@ -301,7 +306,13 @@ async function runRender(
   const realPath = invocation.source === '-' ? undefined : label;
   const toStdout = invocation.output === '-';
   const toFile = invocation.output !== undefined && !toStdout;
-  const followQueue = invocation.followLinks ? createLinkFollowQueue(realPath) : undefined;
+  // The configured default is suppressed by `--output` rather than rejected like the explicit
+  // flag: a single self-contained file cannot hold the linked previews, and a configuration
+  // meant as a default must not make `--output` unusable.
+  const followLinks =
+    invocation.followLinks ??
+    (configuration.followLinks === true && invocation.output === undefined);
+  const followQueue = followLinks ? createLinkFollowQueue(realPath) : undefined;
 
   const { html, messages } = await render(markdown, {
     title: realPath === undefined ? 'stdin' : basename(realPath),
@@ -391,6 +402,7 @@ export async function main(
   argv: readonly string[],
   out: OutputStreams = PROCESS_STREAMS,
   checkForUpdate: typeof startUpdateCheck = startUpdateCheck,
+  loadConfig: typeof loadConfiguration = loadConfiguration,
 ): Promise<number> {
   const logger = createLogger(out.stderr, out.interactive === true);
 
@@ -409,6 +421,10 @@ export async function main(
       return exitCode === 0 ? EXIT_SUCCESS : EXIT_USAGE_ERROR;
     }
 
+    // After the early returns above, so that `--help` and `--version` keep working with a broken
+    // configuration file.
+    const configuration = loadConfig();
+
     // Starts only for a real render — `--help`, `--version` and usage errors returned above —
     // and only where someone watches stderr: never under CI, never when it is redirected.
     const updateCheck = checkForUpdate({
@@ -421,7 +437,7 @@ export async function main(
     });
 
     try {
-      return await runRender(parsed.value, out, logger);
+      return await runRender(parsed.value, configuration, out, logger);
     } finally {
       updateCheck.report();
     }
@@ -429,7 +445,7 @@ export async function main(
     const reason = error instanceof Error ? error.message : String(error);
     logger.error(reason);
 
-    return EXIT_RUNTIME_ERROR;
+    return error instanceof ConfigurationError ? EXIT_USAGE_ERROR : EXIT_RUNTIME_ERROR;
   }
 }
 
