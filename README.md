@@ -1,5 +1,10 @@
 # mat
 
+[![CI](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml/badge.svg)](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/BoundfoxStudios/mat)](https://github.com/BoundfoxStudios/mat/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/BoundfoxStudios/mat/total)](https://github.com/BoundfoxStudios/mat/releases)
+[![License: MIT](https://img.shields.io/github/license/BoundfoxStudios/mat)](LICENSE)
+
 Preview a Markdown file in your browser, the way GitHub renders it.
 
 ```console
