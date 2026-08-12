@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { matDirectoryName } from '../src/assets/cache.ts';
 import { createLinkFollowQueue, previewPathFor } from '../src/cli.ts';
 import { render } from '../src/render/index.ts';
 import type { LinkAdmission } from '../src/render/pipeline.ts';
@@ -251,7 +252,7 @@ async function spawn(args: readonly string[], stdin?: string): Promise<RunResult
 function childPreviewPath(realPath: string): string {
   const digest = createHash('sha256').update(realPath).digest('hex');
 
-  return join(scratch, 'mat', `${digest}.html`);
+  return join(scratch, matDirectoryName(), `${digest}.html`);
 }
 
 function childPreviewUrl(realPath: string): string {
@@ -288,7 +289,9 @@ describe('following links end to end', () => {
       expect(bHtml).toContain(`href="${childPreviewUrl(root)}"`);
 
       // The cycle through root must not multiply previews: one file per document, nothing more.
-      const previews = readdirSync(join(scratch, 'mat')).filter((name) => name.endsWith('.html'));
+      const previews = readdirSync(join(scratch, matDirectoryName())).filter((name) =>
+        name.endsWith('.html'),
+      );
       expect(previews.sort()).toEqual(
         [root, a, b]
           .map((path) => `${createHash('sha256').update(path).digest('hex')}.html`)
@@ -336,7 +339,7 @@ describe('following links end to end', () => {
 
       const stdinPreview = join(
         scratch,
-        'mat',
+        matDirectoryName(),
         `${createHash('sha256').update(markdown).digest('hex')}.html`,
       );
 

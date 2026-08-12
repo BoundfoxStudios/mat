@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { type Browser, chromium, type Page } from 'playwright';
+import { matDirectoryName } from '../src/assets/cache.ts';
 import { render } from '../src/render/index.ts';
 
 const fixtures = join(import.meta.dir, 'fixtures');
@@ -76,7 +77,9 @@ describe('the page as the browser sees it', () => {
     );
 
     expect(sources).toHaveLength(1);
-    expect(sources[0]).toMatch(/\/mat\/assets\/mermaid-[0-9a-f]{16}\.js$/);
+    expect(sources[0]).toMatch(
+      new RegExp(`/${matDirectoryName()}/assets/mermaid-[0-9a-f]{16}\\.js$`),
+    );
   });
 
   test('uses no module script, which file:// would block', async () => {
