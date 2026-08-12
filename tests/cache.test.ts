@@ -17,6 +17,7 @@ import {
   assetDirectory,
   cacheAsset,
   ensureOwnedDirectory,
+  matDirectoryName,
   temporaryPathFor,
   writeAtomically,
 } from '../src/assets/cache.ts';
@@ -165,15 +166,25 @@ describe('eight competing processes', () => {
 
     expect(basename(path)).toBe(`shared-${digestOf(expected)}.bin`);
     expect(readFileSync(path, 'utf8')).toBe(expected);
-    expect(readdirSync(join(scratch, 'mat', 'assets'))).toEqual([basename(path)]);
+    expect(readdirSync(join(scratch, matDirectoryName(), 'assets'))).toEqual([basename(path)]);
   }, 30_000);
+});
+
+describe('matDirectoryName', () => {
+  test('namespaces the directory by user id where one exists', () => {
+    // A shared name under the shared `/tmp` would let the first user lock out everyone else;
+    // Windows has no uid, and its temp directory is per user already.
+    const uid = process.getuid?.();
+
+    expect(matDirectoryName()).toBe(uid === undefined ? 'mat' : `mat-${uid}`);
+  });
 });
 
 // Ownership and mode are POSIX signals; Windows reports invented values for both, which is why
 // `ensureOwnedDirectory` skips these checks there and why asserting them here would be a fiction.
 describe.skipIf(process.platform === 'win32')('a cache directory someone else prepared', () => {
   test('is refused when another user owns it', () => {
-    // On a shared host `/tmp/mat` is a name anyone can claim first, and `mkdirSync` accepts a
+    // On a shared host `/tmp/mat-<uid>` is a name anyone can claim first, and `mkdirSync` accepts a
     // directory it did not create. Ownership is the only thing that distinguishes ours.
     const foreign = join(scratch, 'foreign');
     mkdirSync(foreign, { recursive: true });

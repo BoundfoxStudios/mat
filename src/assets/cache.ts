@@ -12,8 +12,20 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+/**
+ * Namespaced by user id, because on Linux `tmpdir()` is the shared `/tmp` and
+ * `ensureOwnedDirectory` refuses a directory another user owns: a fixed name would lock every
+ * user but the first out of `mat` entirely. Windows has no `getuid`, but its temp directory is
+ * per user already.
+ */
+export function matDirectoryName(): string {
+  const uid = process.getuid?.();
+
+  return uid === undefined ? 'mat' : `mat-${uid}`;
+}
+
 export function matDirectory(): string {
-  return join(tmpdir(), 'mat');
+  return join(tmpdir(), matDirectoryName());
 }
 
 export function assetDirectory(): string {
@@ -43,7 +55,7 @@ function lstatOrUndefined(path: string): Stats | undefined {
  * Creates a directory and refuses one another local user could have prepared.
  *
  * On Linux `tmpdir()` is the shared `/tmp`, and `mkdirSync` accepts a pre-existing directory no
- * matter who owns it. Without this an unprivileged user can create `/tmp/mat/assets` first and
+ * matter who owns it. Without this an unprivileged user can create `/tmp/mat-<uid>/assets` first and
  * plant a file under a name `mat` will later serve to the browser as its own script.
  *
  * Windows has neither of the two signals: there is no `process.getuid`, and `lstat` synthesises
