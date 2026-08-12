@@ -155,6 +155,7 @@ jobs:
             Formula/mat.rb \
             THIRD-PARTY-NOTICES.md \
             third-party/starry-night-grammars-notice.txt \
+            third-party/vscode-oniguruma-notice.txt \
             --clobber
 
       - name: Mint a token for the tap
