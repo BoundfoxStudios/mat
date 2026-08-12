@@ -458,6 +458,14 @@ describe('exit codes', () => {
     expect(stderr).toContain('is a directory');
   });
 
+  test('1 for a non-regular file, instead of blocking on it', async () => {
+    // A FIFO would demonstrate the same, but a device file needs no platform-specific setup.
+    const { code, stderr } = await run(['/dev/null']);
+
+    expect(code).toBe(1);
+    expect(stderr).toContain('not a regular file');
+  });
+
   test(
     '2 for a base-dir that is not a directory',
     async () => {

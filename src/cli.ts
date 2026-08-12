@@ -217,6 +217,12 @@ async function readSource(
       throw new RuntimeError(`${source}: is a directory`);
     }
 
+    // A FIFO reports size 0 and then blocks the read until a writer appears; a device file reads
+    // without end. Neither of the two checks below catches either.
+    if (!stats.isFile()) {
+      throw new RuntimeError(`${source}: not a regular file`);
+    }
+
     // Before reading, not after: a 3 GB file otherwise costs 3 GB of memory to be told it is too
     // large, and a large enough one is killed by the allocator before the message is ever printed.
     if (stats.size > MAX_BYTES) {
