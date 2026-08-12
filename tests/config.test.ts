@@ -32,10 +32,32 @@ describe('configurationFilePath', () => {
   test('falls back to ~/.config when unset, empty or relative', () => {
     const fallback = join(homedir(), '.config', 'mat', 'config.json');
 
-    expect(configurationFilePath({})).toBe(fallback);
-    expect(configurationFilePath({ XDG_CONFIG_HOME: '' })).toBe(fallback);
+    expect(configurationFilePath({}, 'linux')).toBe(fallback);
+    expect(configurationFilePath({ XDG_CONFIG_HOME: '' }, 'linux')).toBe(fallback);
     // The XDG spec demands that a relative value be ignored.
-    expect(configurationFilePath({ XDG_CONFIG_HOME: 'relative/config' })).toBe(fallback);
+    expect(configurationFilePath({ XDG_CONFIG_HOME: 'relative/config' }, 'linux')).toBe(fallback);
+  });
+
+  test('uses %APPDATA% on Windows', () => {
+    expect(configurationFilePath({ APPDATA: scratch }, 'win32')).toBe(
+      join(scratch, 'mat', 'config.json'),
+    );
+  });
+
+  test('lets an absolute XDG_CONFIG_HOME win on Windows too', () => {
+    expect(
+      configurationFilePath(
+        { XDG_CONFIG_HOME: scratch, APPDATA: join(scratch, 'roaming') },
+        'win32',
+      ),
+    ).toBe(join(scratch, 'mat', 'config.json'));
+  });
+
+  test('falls back below the home directory when %APPDATA% is missing', () => {
+    const fallback = join(homedir(), 'AppData', 'Roaming', 'mat', 'config.json');
+
+    expect(configurationFilePath({}, 'win32')).toBe(fallback);
+    expect(configurationFilePath({ APPDATA: '' }, 'win32')).toBe(fallback);
   });
 });
 

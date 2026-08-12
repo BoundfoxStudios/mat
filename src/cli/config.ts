@@ -12,16 +12,29 @@ const MAX_CONFIGURATION_BYTES = 1024 * 1024;
 
 export function configurationFilePath(
   environment: Record<string, string | undefined> = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): string {
   const xdgConfigHome = environment.XDG_CONFIG_HOME;
-  // The XDG spec demands that a relative value be ignored, and `isAbsolute` covers the empty
-  // string with it.
-  const configHome =
-    xdgConfigHome !== undefined && isAbsolute(xdgConfigHome)
-      ? xdgConfigHome
-      : join(homedir(), '.config');
 
-  return join(configHome, 'mat', 'config.json');
+  // The XDG spec demands that a relative value be ignored, and `isAbsolute` covers the empty
+  // string with it. An explicit `XDG_CONFIG_HOME` wins on every platform, so one setting moves
+  // the file wherever the user keeps such things.
+  if (xdgConfigHome !== undefined && isAbsolute(xdgConfigHome)) {
+    return join(xdgConfigHome, 'mat', 'config.json');
+  }
+
+  if (platform === 'win32') {
+    // Windows sets `%APPDATA%` for every session; the fallback only covers a stripped environment.
+    const appData = environment.APPDATA;
+
+    return join(
+      appData !== undefined && appData !== '' ? appData : join(homedir(), 'AppData', 'Roaming'),
+      'mat',
+      'config.json',
+    );
+  }
+
+  return join(homedir(), '.config', 'mat', 'config.json');
 }
 
 function validatedDocuments(

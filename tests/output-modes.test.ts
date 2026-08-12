@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { assetDirectory } from '../src/assets/cache.ts';
+import { assetDirectory, matDirectoryName } from '../src/assets/cache.ts';
 import { MERMAID_SCRIPT } from '../src/generated/assets.ts';
 import { render } from '../src/render/index.ts';
 import type { EmbedMode } from '../src/render/pipeline.ts';
@@ -47,7 +47,9 @@ describe('preview mode', () => {
     const html = await renderHtml(DIAGRAM, 'cache');
 
     expect(html).toMatch(
-      /<script src="file:\/\/[^"]*\/mat\/assets\/mermaid-[0-9a-f]{16}\.js"><\/script>/,
+      new RegExp(
+        `<script src="file://[^"]*/${matDirectoryName()}/assets/mermaid-[0-9a-f]{16}\\.js"></script>`,
+      ),
     );
     // Referenced, not inlined: ~40 KiB instead of ~3.8 MiB per preview.
     expect(html).not.toContain(MERMAID_SCRIPT.slice(0, 200));
@@ -58,7 +60,9 @@ describe('preview mode', () => {
     const html = await renderHtml('$x^2$', 'cache');
 
     expect(html).toMatch(
-      /url\("file:\/\/[^"]*\/mat\/assets\/KaTeX_Main-Regular-[0-9a-f]{16}\.woff2"\)/,
+      new RegExp(
+        `url\\("file://[^"]*/${matDirectoryName()}/assets/KaTeX_Main-Regular-[0-9a-f]{16}\\.woff2"\\)`,
+      ),
     );
     expect(html).not.toContain('data:font/woff2');
     expect(html).not.toContain('url(fonts/');
@@ -84,7 +88,7 @@ describe('output mode', () => {
     const html = await renderHtml(`${DIAGRAM}\n\n$x^2$`, 'inline');
 
     expect(html).not.toContain(assetDirectory());
-    expect(html).not.toContain('/mat/assets/');
+    expect(html).not.toContain(`/${matDirectoryName()}/assets/`);
   });
 });
 
