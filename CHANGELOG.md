@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/BoundfoxStudios/mat/compare/v0.1.3...v0.1.4) (2026-08-12)
+
+
+### Features
+
+* add a global configuration file for default behavior ([d390075](https://github.com/BoundfoxStudios/mat/commit/d390075316c025ba6a86cd1ff5e50d7955c1791e)), closes [#14](https://github.com/BoundfoxStudios/mat/issues/14) [#15](https://github.com/BoundfoxStudios/mat/issues/15) [#16](https://github.com/BoundfoxStudios/mat/issues/16)
+
 ## [0.1.3](https://github.com/BoundfoxStudios/mat/compare/v0.1.2...v0.1.3) (2026-08-12)
 
 

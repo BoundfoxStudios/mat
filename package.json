@@ -1,6 +1,6 @@
 {
   "name": "mat",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Preview a Markdown file in your browser, the way GitHub renders it",
   "keywords": [
     "markdown",
