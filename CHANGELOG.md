@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0](https://github.com/BoundfoxStudios/mat/compare/v0.1.4...v1.0.0) (2026-08-12)
+
+
+### Bug Fixes
+
+* namespace the temp directory by user id ([ea403ee](https://github.com/BoundfoxStudios/mat/commit/ea403ee839422a76e540250af4cc6f3f9ec72459))
+* read the configuration from %APPDATA% on Windows ([1e3d594](https://github.com/BoundfoxStudios/mat/commit/1e3d5944e906be34989166f7a0e68d0f67342190))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([76b27b7](https://github.com/BoundfoxStudios/mat/commit/76b27b7bca234453cc83648ff71aa432ef09e21c))
+
 ## [0.1.4](https://github.com/BoundfoxStudios/mat/compare/v0.1.3...v0.1.4) (2026-08-12)
 
 
