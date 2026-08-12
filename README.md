@@ -36,6 +36,7 @@ and put it on your `PATH`.
 $ mat README.md                      # render and open the browser
 $ mat                                # render this directory's standard document
 $ cat notes.md | mat -               # read from stdin
+$ mat README.md -f                   # also render the local Markdown files it links to
 $ mat README.md --output readme.html # write a self-contained file, open nothing
 $ mat README.md --output -           # write the HTML to stdout
 $ mat README.md --theme dark         # force a theme; default follows the OS
@@ -49,6 +50,11 @@ tells you what it looked for.
 
 The preview URL is stable per file, so running `mat` again on the same document reuses the tab —
 a reload is enough, and you keep your scroll position.
+
+`--follow-links` (short: `-f`) also renders every local Markdown file the document links to,
+recursively, and points those links at the rendered previews instead of the raw sources. Links
+whose target does not exist or cannot be rendered keep pointing at the source and are reported
+on stderr.
 
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.

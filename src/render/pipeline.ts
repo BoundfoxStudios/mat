@@ -25,11 +25,23 @@ export type LinkMode = 'absolute' | 'relative';
 
 export type EmbedMode = 'cache' | 'inline';
 
+export type LinkAdmission = { previewUrl: string } | { problem: string };
+
+/**
+ * Decides, mid-render, whether a linked Markdown file will get a preview of its own. The decision
+ * lives with the caller: the pipeline knows nothing about preview paths or what makes a file
+ * renderable, it only rewrites admitted links and reports refused ones.
+ */
+export interface LinkFollower {
+  admit(absolutePath: string): LinkAdmission;
+}
+
 // The processor is built once per flavor and reused, so per-document values travel on the vfile.
 export interface RenderContext {
   baseDir: string;
   linkMode: LinkMode;
   embedMode: EmbedMode;
+  followLinks?: LinkFollower;
 }
 
 declare module 'vfile' {

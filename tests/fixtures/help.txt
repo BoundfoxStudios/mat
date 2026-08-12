@@ -11,8 +11,9 @@ OPTIONS:
   --base-dir <dir> - Directory relative links resolve against, only valid with -. Default: the current directory. [optional]
 
 FLAGS:
-  --help, -h    - show help [optional]
-  --version, -v - print the version [optional]
+  --follow-links, -f - Also render linked local Markdown files and point their links at the previews. [optional]
+  --help, -h         - show help [optional]
+  --version, -v      - print the version [optional]
 
 EXAMPLES:
 
@@ -24,6 +25,9 @@ EXAMPLES:
 
   Read the document from stdin
   $ cat notes.md | mat -
+
+  Also render every local Markdown file the document links to
+  $ mat README.md -f
 
   Write a self-contained file and open nothing
   $ mat README.md --output readme.html

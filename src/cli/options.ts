@@ -1,11 +1,32 @@
 import { option, type Type } from 'cmd-ts';
 import type { ParseContext, ParsingResult } from 'cmd-ts/dist/cjs/argparser';
-import type { AstNode, LongOption } from 'cmd-ts/dist/cjs/newparser/parser';
+import type { AstNode, LongOption, ShortOption } from 'cmd-ts/dist/cjs/newparser/parser';
 
 export function longOptionsNamed(nodes: readonly AstNode[], long: string): LongOption[] {
   return nodes.filter(
     (node): node is LongOption => node.type === 'longOption' && node.key === long,
   );
+}
+
+/** Short options never stand alone in the tree: `-f` arrives as a `shortOptions` group of one. */
+export function optionsNamed(
+  nodes: readonly AstNode[],
+  long: string,
+  short: string,
+): Array<LongOption | ShortOption> {
+  const named: Array<LongOption | ShortOption> = [];
+
+  for (const node of nodes) {
+    if (node.type === 'longOption' && node.key === long) {
+      named.push(node);
+    }
+
+    if (node.type === 'shortOptions') {
+      named.push(...node.options.filter((option) => option.key === short));
+    }
+  }
+
+  return named;
 }
 
 interface ValuedOptionConfig<Value> {
