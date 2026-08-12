@@ -62,7 +62,8 @@ Images are not — they stay absolute `file://` links to wherever they are on yo
 ### Configuration
 
 `mat` reads optional defaults from `$XDG_CONFIG_HOME/mat/config.json` —
-`~/.config/mat/config.json` unless `XDG_CONFIG_HOME` is set:
+`~/.config/mat/config.json` unless `XDG_CONFIG_HOME` is set. On Windows the file lives in
+`%APPDATA%\mat\config.json`; an absolute `XDG_CONFIG_HOME` wins there too:
 
 ```json
 {
