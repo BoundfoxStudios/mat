@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { runSafely } from 'cmd-ts';
+import { matDirectoryName } from '../src/assets/cache.ts';
 import { type Invocation, renderCommand } from '../src/cli/commands/render.ts';
 import { DEFAULT_DOCUMENTS, findDefaultDocument } from '../src/cli/default-document.ts';
 import type { UpdateCheckOptions } from '../src/cli/update-check.ts';
@@ -338,7 +339,7 @@ describe('configuration file', () => {
   }
 
   function previews(): string[] {
-    return readdirSync(join(scratch, 'mat')).filter((name) => name.endsWith('.html'));
+    return readdirSync(join(scratch, matDirectoryName())).filter((name) => name.endsWith('.html'));
   }
 
   test(
