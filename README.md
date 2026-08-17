@@ -1,3 +1,5 @@
+<img src="assets/mat-logo-dark.svg" alt="mat" width="128">
+
 # mat
 
 [![CI](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml/badge.svg)](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml)
