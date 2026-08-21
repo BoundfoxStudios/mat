@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/BoundfoxStudios/mat/compare/v1.0.0...v1.1.0) (2026-08-21)
+
+
+### Features
+
+* let the configuration file make --watch the default ([5af4673](https://github.com/BoundfoxStudios/mat/commit/5af4673a912639f98c9c00e4cc995c085623ebb4)), closes [#31](https://github.com/BoundfoxStudios/mat/issues/31)
+* re-render and reload the browser on change behind --watch ([4e880f1](https://github.com/BoundfoxStudios/mat/commit/4e880f14b0323750d240bc224f9af545e386e5af)), closes [#31](https://github.com/BoundfoxStudios/mat/issues/31)
+
 ## [1.0.0](https://github.com/BoundfoxStudios/mat/compare/v0.1.4...v1.0.0) (2026-08-12)
 
 
