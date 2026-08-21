@@ -1,5 +1,6 @@
 import { boolean, command, flag, optional, positional } from 'cmd-ts';
 import type { ParseContext, ParsingResult } from 'cmd-ts/dist/cjs/argparser';
+import type { AstNode } from 'cmd-ts/dist/cjs/newparser/parser';
 import { DEFAULT_FLAVOR_NAME } from '../../flavors/index.ts';
 import { MAT_VERSION, type ThemeName } from '../../generated/assets.ts';
 import { directoryType, flavorType, pathType, themeType } from '../argument-types.ts';
@@ -13,6 +14,7 @@ export interface Invocation {
   flavor: string;
   baseDir: string | undefined;
   followLinks: boolean | undefined;
+  watch: boolean;
 }
 
 const renderArguments = command({
@@ -26,6 +28,10 @@ const renderArguments = command({
     {
       description: 'Also render every local Markdown file the document links to',
       command: 'mat README.md -f',
+    },
+    {
+      description: 'Keep re-rendering and reload the browser on every change',
+      command: 'mat README.md -w',
     },
     {
       description: 'Write a self-contained file and open nothing',
@@ -70,49 +76,67 @@ const renderArguments = command({
       description:
         'Also render linked local Markdown files and point their links at the previews. =false overrides the configuration file.',
     }),
+    watch: flag({
+      long: 'watch',
+      short: 'w',
+      description:
+        'Re-render whenever a rendered file changes and reload the browser tab. Ctrl+C stops.',
+    }),
   },
   handler: (invocation): Invocation => invocation,
 });
 
+function usageError(nodes: AstNode[], message: string): ParsingResult<never> {
+  return { _tag: 'error', error: { errors: [{ nodes, message }] } };
+}
+
 /**
- * The command, plus the one rule that no single argument can check on its own. Reporting it from
- * `parse` rather than from the handler puts it in the same error box as every other usage error.
+ * The command, plus the rules that no single argument can check on its own. Reporting them from
+ * `parse` rather than from the handler puts them in the same error box as every other usage error.
  */
 export const renderCommand = {
   ...renderArguments,
   async parse(context: ParseContext): Promise<ParsingResult<Invocation>> {
     const parsed = await renderArguments.parse(context);
 
-    if (parsed._tag === 'ok' && parsed.value.baseDir !== undefined && parsed.value.source !== '-') {
-      // Whenever a file is rendered — named or defaulted to — the base is that file's directory;
-      // an override would silently resolve images against a directory it knows nothing about.
-      return {
-        _tag: 'error',
-        error: {
-          errors: [
-            {
-              nodes: longOptionsNamed(context.nodes, 'base-dir'),
-              message: '--base-dir is only valid together with -',
-            },
-          ],
-        },
-      };
+    if (parsed._tag !== 'ok') {
+      return parsed;
     }
 
-    if (parsed._tag === 'ok' && parsed.value.followLinks && parsed.value.output !== undefined) {
+    if (parsed.value.baseDir !== undefined && parsed.value.source !== '-') {
+      // Whenever a file is rendered, named or defaulted to, the base is that file's directory;
+      // an override would silently resolve images against a directory it knows nothing about.
+      return usageError(
+        longOptionsNamed(context.nodes, 'base-dir'),
+        '--base-dir is only valid together with -',
+      );
+    }
+
+    if (parsed.value.followLinks && parsed.value.output !== undefined) {
       // `--output` produces a single self-contained file; following links needs one preview file
       // per document, which that contract cannot hold.
-      return {
-        _tag: 'error',
-        error: {
-          errors: [
-            {
-              nodes: optionsNamed(context.nodes, 'follow-links', 'f'),
-              message: '--follow-links is only valid without --output',
-            },
-          ],
-        },
-      };
+      return usageError(
+        optionsNamed(context.nodes, 'follow-links', 'f'),
+        '--follow-links is only valid without --output',
+      );
+    }
+
+    if (parsed.value.watch && parsed.value.output !== undefined) {
+      // `--output` writes once and opens nothing, so there is neither a tab to reload nor a reason
+      // to keep the process alive.
+      return usageError(
+        optionsNamed(context.nodes, 'watch', 'w'),
+        '--watch is only valid without --output',
+      );
+    }
+
+    if (parsed.value.watch && parsed.value.source === '-') {
+      // A pipe is read once and has no path to watch. This rules out `--base-dir` along with it,
+      // since that one only exists together with `-`.
+      return usageError(
+        optionsNamed(context.nodes, 'watch', 'w'),
+        '--watch is only valid with a file',
+      );
     }
 
     return parsed;

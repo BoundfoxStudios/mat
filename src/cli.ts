@@ -11,8 +11,9 @@ import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.t
 import { ConfigurationError, describeFileSystemError, RuntimeError } from './cli/errors.ts';
 import { createLogger, type Logger } from './cli/logger.ts';
 import { startUpdateCheck } from './cli/update-check.ts';
+import { runWatch } from './cli/watch.ts';
 import { MAT_VERSION } from './generated/assets.ts';
-import { render } from './render/index.ts';
+import { type RenderOptions, render } from './render/index.ts';
 import type { LinkAdmission } from './render/pipeline.ts';
 
 export const EXIT_SUCCESS = 0;
@@ -309,6 +310,7 @@ async function renderDocuments(
   invocation: Invocation,
   configuration: Configuration,
   logger: Logger,
+  reload?: RenderOptions['reload'],
 ): Promise<RenderedDocuments> {
   const { bytes, label } = await readSource(invocation, configuration, logger);
 
@@ -336,6 +338,7 @@ async function renderDocuments(
     // the shared cache.
     embedMode: invocation.output === undefined ? 'cache' : 'inline',
     followLinks: followQueue,
+    reload,
   });
 
   const collectedMessages = [...messages];
@@ -355,6 +358,7 @@ async function renderDocuments(
         linkMode: 'absolute',
         embedMode: 'cache',
         followLinks: followQueue,
+        reload,
       });
 
       writePreview(previewPathFor(queued.realPath), linked.html);
@@ -424,6 +428,39 @@ async function runRender(
   return EXIT_SUCCESS;
 }
 
+async function runWatchSession(
+  invocation: Invocation,
+  configuration: Configuration,
+  logger: Logger,
+  signal: AbortSignal,
+  onFirstRender: () => void,
+): Promise<number> {
+  let pinned = invocation;
+
+  await runWatch({
+    logger,
+    signal,
+    onFirstRender,
+    async render(reloadUrl) {
+      const rendered = await renderDocuments(pinned, configuration, logger, { url: reloadUrl });
+
+      writePreview(rendered.previewPath, rendered.html);
+      // Pinned to the path the first render resolved: called without a file, a session that
+      // started on `README.md` must not silently switch to an `index.md` created later. `--watch`
+      // is rejected for stdin, so there is always a path to pin. Retargeting the symlink a
+      // session was started through is knowingly not followed.
+      pinned = { ...pinned, source: rendered.realPath ?? pinned.source };
+
+      return {
+        previewUrl: pathToFileURL(rendered.previewPath).href,
+        renderedRealPaths: rendered.renderedRealPaths,
+      };
+    },
+  });
+
+  return EXIT_SUCCESS;
+}
+
 /**
  * `checkForUpdate` is injectable for the same reason `out` is: the real one talks to GitHub
  * and to the shared temp directory, neither of which a test may touch.
@@ -466,10 +503,47 @@ export async function main(
       logger,
     });
 
-    try {
-      return await runRender(parsed.value, configuration, out, logger);
-    } finally {
+    // A watch session reports right after its first render instead of at shutdown, where the hint
+    // would scroll past minutes later; the wrapper keeps the `finally` below from repeating it.
+    let reported = false;
+    const reportUpdateOnce = (): void => {
+      if (reported) {
+        return;
+      }
+
+      reported = true;
       updateCheck.report();
+    };
+
+    try {
+      if (!parsed.value.watch) {
+        return await runRender(parsed.value, configuration, out, logger);
+      }
+
+      const controller = new AbortController();
+      const abort = (): void => {
+        controller.abort();
+      };
+
+      // `once` on both, so a second Ctrl+C during shutdown reaches the default handler and kills
+      // the process rather than being swallowed.
+      process.once('SIGINT', abort);
+      process.once('SIGTERM', abort);
+
+      try {
+        return await runWatchSession(
+          parsed.value,
+          configuration,
+          logger,
+          controller.signal,
+          reportUpdateOnce,
+        );
+      } finally {
+        process.off('SIGINT', abort);
+        process.off('SIGTERM', abort);
+      }
+    } finally {
+      reportUpdateOnce();
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
