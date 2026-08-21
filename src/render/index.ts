@@ -2,6 +2,7 @@ import { VFile } from 'vfile';
 import { DEFAULT_FLAVOR_NAME, type Flavor, flavorNames, getFlavor } from '../flavors/index.ts';
 import type { ThemeName } from '../generated/assets.ts';
 import { collectPageAssets } from '../html/page-assets.ts';
+import { reloadClientTag } from '../html/reload-client.ts';
 import { buildDocument } from '../html/template.ts';
 import { getProcessor, type RenderContext } from './pipeline.ts';
 
@@ -9,6 +10,7 @@ export interface RenderOptions extends RenderContext {
   title: string;
   theme: ThemeName;
   flavor?: string;
+  reload?: { url: string };
 }
 
 export interface RenderResult {
@@ -52,6 +54,11 @@ export async function render(markdown: string, options: RenderOptions): Promise<
     // on — so this sniff cannot drift from what the page needs.
     usesMath: body.includes('class="katex'),
   });
+
+  // Kept out of `matContext`: the pipeline has no business knowing about the reload channel.
+  if (options.reload !== undefined) {
+    assets.scripts.push(reloadClientTag(options.reload.url));
+  }
 
   return {
     html: buildDocument({

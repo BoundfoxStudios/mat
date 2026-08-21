@@ -86,4 +86,190 @@ describe('render', () => {
   test('is deterministic', async () => {
     expect(await renderHtml('# Same')).toBe(await renderHtml('# Same'));
   });
+
+  describe('reload client', () => {
+    const reloadUrl = 'ws://127.0.0.1:4711/reload';
+
+    function scriptTagCount(html: string): number {
+      return html.match(/<script/g)?.length ?? 0;
+    }
+
+    interface RunningClient {
+      socketCount: () => number;
+      reloadCount: () => number;
+      currentUrl: () => string;
+      receive: (data: unknown) => void;
+      open: () => void;
+      /** Returns false when the close scheduled no reconnect. */
+      closeAndReconnect: () => boolean;
+    }
+
+    /**
+     * Runs the injected client with stand-ins for the three globals it touches, which is the only
+     * way to reach its behaviour without a browser.
+     */
+    function runClientFrom(html: string): RunningClient {
+      const source = [...html.matchAll(/<script>\n([\s\S]*?)\n<\/script>/g)]
+        .map((script) => script[1])
+        .find((body) => body?.includes('new WebSocket'));
+
+      if (source === undefined) {
+        throw new Error('the rendered page carries no reload client');
+      }
+
+      const sockets: SocketStub[] = [];
+      const scheduled: { callback: () => void; delayMilliseconds: number }[] = [];
+      let reloads = 0;
+
+      class SocketStub {
+        readonly listeners = new Map<string, (event: { data: unknown }) => void>();
+        readonly url: string;
+
+        constructor(url: string) {
+          this.url = url;
+          sockets.push(this);
+        }
+
+        addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+          this.listeners.set(type, listener);
+        }
+      }
+
+      const runSource = new Function('WebSocket', 'location', 'setTimeout', source) as (
+        socketConstructor: new (url: string) => unknown,
+        locationStub: { reload: () => void },
+        schedule: (callback: () => void, delayMilliseconds: number) => void,
+      ) => void;
+
+      runSource(
+        SocketStub,
+        {
+          reload: () => {
+            reloads += 1;
+          },
+        },
+        (callback, delayMilliseconds) => {
+          scheduled.push({ callback, delayMilliseconds });
+        },
+      );
+
+      function currentSocket(): SocketStub {
+        const socket = sockets[sockets.length - 1];
+
+        if (socket === undefined) {
+          throw new Error('the client opened no socket');
+        }
+
+        return socket;
+      }
+
+      function dispatch(type: string, data?: unknown): void {
+        const listener = currentSocket().listeners.get(type);
+
+        if (listener === undefined) {
+          throw new Error(`the client registered no ${type} listener`);
+        }
+
+        listener({ data });
+      }
+
+      return {
+        socketCount: () => sockets.length,
+        reloadCount: () => reloads,
+        currentUrl: () => currentSocket().url,
+        receive: (data) => {
+          dispatch('message', data);
+        },
+        open: () => {
+          dispatch('open');
+        },
+        closeAndReconnect: () => {
+          dispatch('close');
+
+          const reconnect = scheduled.shift();
+
+          if (reconnect === undefined) {
+            return false;
+          }
+
+          expect(reconnect.delayMilliseconds).toBe(1000);
+          reconnect.callback();
+
+          return true;
+        },
+      };
+    }
+
+    test('adds exactly one classic script carrying the escaped url when reload is set', async () => {
+      const plain = await renderHtml('# Hello');
+      const watched = await renderHtml('# Hello', {
+        reload: { url: `${reloadUrl}?x=</script><script>alert(1)</script>` },
+      });
+
+      expect(scriptTagCount(watched)).toBe(scriptTagCount(plain) + 1);
+      expect(watched).not.toContain('type="module"');
+      expect(watched).not.toContain('</script><script>');
+      expect(watched).toContain(
+        `const url = "${reloadUrl}?x=\\u003c/script>\\u003cscript>alert(1)\\u003c/script>";`,
+      );
+    });
+
+    test('hands the socket the unescaped url when it carries script-terminating characters', async () => {
+      const hostileUrl = `${reloadUrl}?x=</script><script>alert(1)</script>`;
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: hostileUrl } }));
+
+      expect(client.currentUrl()).toBe(hostileUrl);
+    });
+
+    test('leaves the page without any socket code when reload is not set', async () => {
+      expect(await renderHtml('# Hello')).not.toContain('WebSocket');
+    });
+
+    test('reloads on the reload message and ignores every other message', async () => {
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
+
+      expect(client.currentUrl()).toBe(reloadUrl);
+
+      client.receive('ping');
+
+      expect(client.reloadCount()).toBe(0);
+
+      client.receive('reload');
+
+      expect(client.reloadCount()).toBe(1);
+    });
+
+    test('stops reconnecting after twenty-five closes without a connection in between', async () => {
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
+
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        expect(client.closeAndReconnect()).toBe(true);
+      }
+
+      expect(client.closeAndReconnect()).toBe(false);
+      expect(client.socketCount()).toBe(26);
+    });
+
+    test('reconnects past the cap once a connection has opened', async () => {
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
+
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        expect(client.closeAndReconnect()).toBe(true);
+      }
+
+      client.open();
+
+      expect(client.closeAndReconnect()).toBe(true);
+    });
+
+    test('reloads on a reload message from the socket a reconnect opened', async () => {
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
+
+      expect(client.closeAndReconnect()).toBe(true);
+
+      client.receive('reload');
+
+      expect(client.reloadCount()).toBe(1);
+    });
+  });
 });
