@@ -135,7 +135,7 @@ export const renderCommand = {
       // since that one only exists together with `-`.
       return usageError(
         optionsNamed(context.nodes, 'watch', 'w'),
-        '--watch is only valid with a file',
+        '--watch is only valid without -',
       );
     }
 

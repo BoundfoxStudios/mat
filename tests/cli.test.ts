@@ -236,11 +236,11 @@ describe('arguments', () => {
       '--watch is only valid without --output',
     ],
     // A pipe is read once and has no path to watch.
-    ['watch with stdin', ['-', '--watch'], '--watch is only valid with a file'],
+    ['watch with stdin', ['-', '--watch'], '--watch is only valid without -'],
     [
       'watch with stdin and a base directory',
       ['-', '-w', '--base-dir=/tmp'],
-      '--watch is only valid with a file',
+      '--watch is only valid without -',
     ],
   ];
 
