@@ -48,6 +48,7 @@ $ mat README.md                      # render and open the browser
 $ mat                                # render this directory's standard document
 $ cat notes.md | mat -               # read from stdin
 $ mat README.md -f                   # also render the local Markdown files it links to
+$ mat README.md -w                   # keep re-rendering and reload the tab on every change
 $ mat README.md --output readme.html # write a self-contained file, open nothing
 $ mat README.md --output -           # write the HTML to stdout
 $ mat README.md --theme dark         # force a theme; default follows the OS
@@ -66,6 +67,19 @@ a reload is enough, and you keep your scroll position.
 recursively, and points those links at the rendered previews instead of the raw sources. Links
 whose target does not exist or cannot be rendered keep pointing at the source and are reported
 on stderr.
+
+`--watch` (short: `-w`) keeps `mat` running: every change to a rendered file re-renders it and
+reloads the open tab. The reload travels over a WebSocket on `127.0.0.1` that lives and dies with
+the process, on a random path; the page itself stays a plain `file://` document. Watched are
+exactly the Markdown files that were rendered, so with `--follow-links` the set follows the links
+as they appear and disappear. Images and other assets are not watched.
+
+A file that cannot be read or rendered is reported on stderr and leaves the last good preview in
+place, so fixing it and saving again picks the session back up. `Ctrl+C` ends it with exit `0`. If
+no browser can be started, the URL is printed and watching continues, because opening it by hand
+is all that is missing. `--watch` cannot be combined with `--output` or with `-`, and on network
+file systems changes may go unnoticed, because the `fs.watch` underneath does not reliably see
+them.
 
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.
