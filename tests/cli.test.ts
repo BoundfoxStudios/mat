@@ -149,6 +149,7 @@ describe('arguments', () => {
       baseDir: undefined,
       // Not false: only "not given" lets a configuration file supply the default.
       followLinks: undefined,
+      watch: undefined,
     });
   });
 
@@ -159,6 +160,20 @@ describe('arguments', () => {
     ]) {
       expect(await parse(args)).toMatchObject({ followLinks: true });
     }
+  });
+
+  test('accepts both spellings of watch', async () => {
+    for (const args of [
+      ['note.md', '--watch'],
+      ['note.md', '-w'],
+    ]) {
+      expect(await parse(args)).toMatchObject({ watch: true });
+    }
+  });
+
+  test('accepts an explicit watch value', async () => {
+    expect(await parse(['note.md', '--watch=false'])).toMatchObject({ watch: false });
+    expect(await parse(['note.md', '--watch=true'])).toMatchObject({ watch: true });
   });
 
   test('accepts an explicit follow-links value', async () => {
@@ -212,6 +227,25 @@ describe('arguments', () => {
       'the short flag with an output file',
       ['a.md', '-f', '--output', 'a.html'],
       '--follow-links is only valid',
+    ],
+    // `--output` writes once and opens nothing, so there is no tab to reload.
+    [
+      'watch with an output file',
+      ['a.md', '--watch', '--output', 'a.html'],
+      '--watch is only valid without --output',
+    ],
+    [
+      'the short watch flag with an output file',
+      ['a.md', '-w', '--output', '-'],
+      '--watch is only valid without --output',
+    ],
+    // A pipe is read once and has no path to watch.
+    ['watch with stdin', ['-', '--watch'], '--watch is only valid without -'],
+    ['a malformed watch value', ['a.md', '--watch=maybe'], 'expected value'],
+    [
+      'watch with stdin and a base directory',
+      ['-', '-w', '--base-dir=/tmp'],
+      '--watch is only valid without -',
     ],
   ];
 

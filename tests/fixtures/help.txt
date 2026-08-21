@@ -12,6 +12,7 @@ OPTIONS:
 
 FLAGS:
   --follow-links, -f - Also render linked local Markdown files and point their links at the previews. =false overrides the configuration file. [optional]
+  --watch, -w        - Re-render whenever a rendered file changes and reload the browser tab, until Ctrl+C. =false overrides the configuration file. [optional]
   --help, -h         - show help [optional]
   --version, -v      - print the version [optional]
 
@@ -28,6 +29,9 @@ EXAMPLES:
 
   Also render every local Markdown file the document links to
   $ mat README.md -f
+
+  Keep re-rendering and reload the browser on every change
+  $ mat README.md -w
 
   Write a self-contained file and open nothing
   $ mat README.md --output readme.html

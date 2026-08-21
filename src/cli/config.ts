@@ -6,6 +6,7 @@ import { ConfigurationError, describeFileSystemError } from './errors.ts';
 export interface Configuration {
   readonly defaultDocuments?: readonly string[];
   readonly followLinks?: boolean;
+  readonly watch?: boolean;
 }
 
 const MAX_CONFIGURATION_BYTES = 1024 * 1024;
@@ -58,6 +59,18 @@ function validatedDocuments(
   });
 }
 
+function validatedBoolean(
+  key: string,
+  value: unknown,
+  problem: (message: string) => ConfigurationError,
+): boolean {
+  if (typeof value !== 'boolean') {
+    throw problem(`${key}: expected true or false`);
+  }
+
+  return value;
+}
+
 /**
  * Strict on purpose: an unknown key is far more likely a typo than an intention, and silently
  * ignoring it would leave the user believing a setting is active when it is not.
@@ -70,19 +83,17 @@ function validated(
     throw problem('not a JSON object');
   }
 
-  const configuration: { defaultDocuments?: string[]; followLinks?: boolean } = {};
+  const configuration: { defaultDocuments?: string[]; followLinks?: boolean; watch?: boolean } = {};
 
   for (const [key, value] of Object.entries(parsed)) {
     if (key === 'defaultDocuments') {
       configuration.defaultDocuments = validatedDocuments(value, problem);
     } else if (key === 'followLinks') {
-      if (typeof value !== 'boolean') {
-        throw problem('followLinks: expected true or false');
-      }
-
-      configuration.followLinks = value;
+      configuration.followLinks = validatedBoolean(key, value, problem);
+    } else if (key === 'watch') {
+      configuration.watch = validatedBoolean(key, value, problem);
     } else {
-      throw problem(`unknown key "${key}" (known: defaultDocuments, followLinks)`);
+      throw problem(`unknown key "${key}" (known: defaultDocuments, followLinks, watch)`);
     }
   }
 

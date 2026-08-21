@@ -11,8 +11,9 @@ import { DEFAULT_DOCUMENTS, findDefaultDocument } from './cli/default-document.t
 import { ConfigurationError, describeFileSystemError, RuntimeError } from './cli/errors.ts';
 import { createLogger, type Logger } from './cli/logger.ts';
 import { startUpdateCheck } from './cli/update-check.ts';
+import { runWatch } from './cli/watch.ts';
 import { MAT_VERSION } from './generated/assets.ts';
-import { render } from './render/index.ts';
+import { type RenderOptions, render } from './render/index.ts';
 import type { LinkAdmission } from './render/pipeline.ts';
 
 export const EXIT_SUCCESS = 0;
@@ -290,12 +291,27 @@ function writePreview(previewPath: string, html: string): void {
   }
 }
 
-async function runRender(
+export interface RenderedDocuments {
+  html: string;
+  /** Where the root document's preview belongs; a `--output` render has no use for it. */
+  previewPath: string;
+  /** The root document's real path, or undefined when it was read from stdin. */
+  realPath: string | undefined;
+  /** Every rendered document that has a path on disk: the root first, then the followed links. */
+  renderedRealPaths: string[];
+}
+
+/**
+ * One render pass over the source and everything it links to, with the linked previews already
+ * written. Separate from `runRender` so that `--watch` can repeat exactly this step: every call
+ * builds a fresh follow queue, so a link added or removed since the last pass is picked up.
+ */
+async function renderDocuments(
   invocation: Invocation,
   configuration: Configuration,
-  out: OutputStreams,
   logger: Logger,
-): Promise<number> {
+  reload?: RenderOptions['reload'],
+): Promise<RenderedDocuments> {
   const { bytes, label } = await readSource(invocation, configuration, logger);
 
   if (bytes.byteLength > WARN_BYTES) {
@@ -304,8 +320,6 @@ async function runRender(
 
   const markdown = decodeMarkdown(bytes, label);
   const realPath = invocation.source === '-' ? undefined : label;
-  const toStdout = invocation.output === '-';
-  const toFile = invocation.output !== undefined && !toStdout;
   // The configured default is suppressed by `--output` rather than rejected like the explicit
   // flag: a single self-contained file cannot hold the linked previews, and a configuration
   // meant as a default must not make `--output` unusable.
@@ -324,9 +338,11 @@ async function runRender(
     // the shared cache.
     embedMode: invocation.output === undefined ? 'cache' : 'inline',
     followLinks: followQueue,
+    reload,
   });
 
   const collectedMessages = [...messages];
+  const renderedRealPaths = realPath === undefined ? [] : [realPath];
 
   if (followQueue !== undefined) {
     for (
@@ -342,9 +358,11 @@ async function runRender(
         linkMode: 'absolute',
         embedMode: 'cache',
         followLinks: followQueue,
+        reload,
       });
 
       writePreview(previewPathFor(queued.realPath), linked.html);
+      renderedRealPaths.push(queued.realPath);
 
       const documentLabel = relative(process.cwd(), queued.realPath);
       collectedMessages.push(...linked.messages.map((message) => `${documentLabel}: ${message}`));
@@ -353,13 +371,34 @@ async function runRender(
 
   reportMessages(collectedMessages, logger);
 
-  if (toStdout) {
+  return {
+    html,
+    // stdin has no path to key the preview on, so its content decides: two different documents
+    // piped in must not overwrite each other's tab.
+    previewPath:
+      realPath === undefined
+        ? join(previewDirectory(), `${createHash('sha256').update(markdown).digest('hex')}.html`)
+        : previewPathFor(realPath),
+    realPath,
+    renderedRealPaths,
+  };
+}
+
+async function runRender(
+  invocation: Invocation,
+  configuration: Configuration,
+  out: OutputStreams,
+  logger: Logger,
+): Promise<number> {
+  const { html, previewPath } = await renderDocuments(invocation, configuration, logger);
+
+  if (invocation.output === '-') {
     out.stdout(html);
 
     return EXIT_SUCCESS;
   }
 
-  if (toFile && invocation.output !== undefined) {
+  if (invocation.output !== undefined) {
     const target = isAbsolute(invocation.output) ? invocation.output : resolve(invocation.output);
 
     try {
@@ -373,11 +412,6 @@ async function runRender(
     return EXIT_SUCCESS;
   }
 
-  const previewPath =
-    realPath === undefined
-      ? join(previewDirectory(), `${createHash('sha256').update(markdown).digest('hex')}.html`)
-      : previewPathFor(realPath);
-
   writePreview(previewPath, html);
 
   // Never string concatenation: it breaks on Windows paths, spaces and umlauts.
@@ -390,6 +424,39 @@ async function runRender(
   }
 
   logger.success(previewUrl);
+
+  return EXIT_SUCCESS;
+}
+
+async function runWatchSession(
+  invocation: Invocation,
+  configuration: Configuration,
+  logger: Logger,
+  signal: AbortSignal,
+  onFirstRender: () => void,
+): Promise<number> {
+  let pinned = invocation;
+
+  await runWatch({
+    logger,
+    signal,
+    onFirstRender,
+    async render(reloadUrl) {
+      const rendered = await renderDocuments(pinned, configuration, logger, { url: reloadUrl });
+
+      writePreview(rendered.previewPath, rendered.html);
+      // Pinned to the path the first render resolved: called without a file, a session that
+      // started on `README.md` must not silently switch to an `index.md` created later. `--watch`
+      // is rejected for stdin, so there is always a path to pin. Retargeting the symlink a
+      // session was started through is knowingly not followed.
+      pinned = { ...pinned, source: rendered.realPath ?? pinned.source };
+
+      return {
+        previewUrl: pathToFileURL(rendered.previewPath).href,
+        renderedRealPaths: rendered.renderedRealPaths,
+      };
+    },
+  });
 
   return EXIT_SUCCESS;
 }
@@ -436,10 +503,55 @@ export async function main(
       logger,
     });
 
-    try {
-      return await runRender(parsed.value, configuration, out, logger);
-    } finally {
+    // A watch session reports right after its first render instead of at shutdown, where the hint
+    // would scroll past minutes later; the wrapper keeps the `finally` below from repeating it.
+    let reported = false;
+    const reportUpdateOnce = (): void => {
+      if (reported) {
+        return;
+      }
+
+      reported = true;
       updateCheck.report();
+    };
+
+    // The configured default is suppressed by `--output` and by stdin rather than rejected like the
+    // explicit flag: neither can carry a session, and a default must not make them unusable.
+    const watch =
+      parsed.value.watch ??
+      (configuration.watch === true &&
+        parsed.value.output === undefined &&
+        parsed.value.source !== '-');
+
+    try {
+      if (!watch) {
+        return await runRender(parsed.value, configuration, out, logger);
+      }
+
+      const controller = new AbortController();
+      const abort = (): void => {
+        controller.abort();
+      };
+
+      // `once` on both, so a second Ctrl+C during shutdown reaches the default handler and kills
+      // the process rather than being swallowed.
+      process.once('SIGINT', abort);
+      process.once('SIGTERM', abort);
+
+      try {
+        return await runWatchSession(
+          parsed.value,
+          configuration,
+          logger,
+          controller.signal,
+          reportUpdateOnce,
+        );
+      } finally {
+        process.off('SIGINT', abort);
+        process.off('SIGTERM', abort);
+      }
+    } finally {
+      reportUpdateOnce();
     }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

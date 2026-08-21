@@ -48,6 +48,7 @@ $ mat README.md                      # render and open the browser
 $ mat                                # render this directory's standard document
 $ cat notes.md | mat -               # read from stdin
 $ mat README.md -f                   # also render the local Markdown files it links to
+$ mat README.md -w                   # keep re-rendering and reload the tab on every change
 $ mat README.md --output readme.html # write a self-contained file, open nothing
 $ mat README.md --output -           # write the HTML to stdout
 $ mat README.md --theme dark         # force a theme; default follows the OS
@@ -67,6 +68,19 @@ recursively, and points those links at the rendered previews instead of the raw 
 whose target does not exist or cannot be rendered keep pointing at the source and are reported
 on stderr.
 
+`--watch` (short: `-w`) keeps `mat` running: every change to a rendered file re-renders it and
+reloads the open tab. The reload travels over a WebSocket on `127.0.0.1` that lives and dies with
+the process, on a random path; the page itself stays a plain `file://` document. Watched are
+exactly the Markdown files that were rendered, so with `--follow-links` the set follows the links
+as they appear and disappear. Images and other assets are not watched.
+
+A file that cannot be read or rendered is reported on stderr and leaves the last good preview in
+place, so fixing it and saving again picks the session back up. `Ctrl+C` ends it with exit `0`. If
+no browser can be started, the URL is printed and watching continues, because opening it by hand
+is all that is missing. `--watch` cannot be combined with `--output` or with `-`, and on network
+file systems changes may go unnoticed, because the `fs.watch` underneath does not reliably see
+them. It can be made the [default](#configuration).
+
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.
 
@@ -79,15 +93,20 @@ Images are not — they stay absolute `file://` links to wherever they are on yo
 ```json
 {
   "defaultDocuments": ["NOTES.md", "README.md"],
-  "followLinks": true
+  "followLinks": true,
+  "watch": true
 }
 ```
 
-Both keys are optional. `defaultDocuments` replaces the built-in list of documents `mat` tries
-when called without a file, in the order given. `followLinks` makes `--follow-links` the default;
-`--follow-links=false` turns it back off for one call. A flag on the command line always wins over
-the file, and `--output` ignores a configured `followLinks`, because a single self-contained file
-cannot hold the linked previews.
+All three keys are optional. `defaultDocuments` replaces the built-in list of documents `mat` tries
+when called without a file, in the order given. `followLinks` makes `--follow-links` the default,
+and `watch` makes `--watch` the default, so plain `mat README.md` keeps running until `Ctrl+C`
+instead of returning once the browser is open. `--follow-links=false` and `--watch=false` turn
+either back off for one call, and a flag on the command line always wins over the file.
+
+Where a configured default cannot apply, it is dropped rather than turned into an error: `--output`
+ignores both, because a single self-contained file cannot hold the linked previews and there is no
+tab to reload, and reading from `-` ignores `watch`, because a pipe has no path to watch.
 
 A configuration file that is not valid JSON, or that contains unknown keys or wrong types, is an
 error: `mat` names the file and the problem, and exits `2`. Having no configuration file is the

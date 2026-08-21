@@ -78,18 +78,22 @@ describe('loadConfiguration', () => {
     expect(loadConfiguration(configFile('{}'))).toEqual({});
   });
 
-  test('reads both keys', () => {
-    const path = configFile('{"defaultDocuments": ["NOTES.md", "docs/x.md"], "followLinks": true}');
+  test('reads every key', () => {
+    const path = configFile(
+      '{"defaultDocuments": ["NOTES.md", "docs/x.md"], "followLinks": true, "watch": true}',
+    );
 
     expect(loadConfiguration(path)).toEqual({
       defaultDocuments: ['NOTES.md', 'docs/x.md'],
       followLinks: true,
+      watch: true,
     });
   });
 
-  test('reads followLinks set to false', () => {
-    expect(loadConfiguration(configFile('{"followLinks": false}'))).toEqual({
+  test('reads the flags set to false', () => {
+    expect(loadConfiguration(configFile('{"followLinks": false, "watch": false}'))).toEqual({
       followLinks: false,
+      watch: false,
     });
   });
 
@@ -101,6 +105,7 @@ describe('loadConfiguration', () => {
     ['a string root', '"README.md"', 'not a JSON object'],
     ['an unknown key', '{"followLink": true}', 'unknown key "followLink"'],
     ['a non-boolean followLinks', '{"followLinks": "yes"}', 'followLinks: expected true or false'],
+    ['a non-boolean watch', '{"watch": "yes"}', 'watch: expected true or false'],
     [
       'a non-array defaultDocuments',
       '{"defaultDocuments": "README.md"}',
