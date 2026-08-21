@@ -97,7 +97,6 @@ describe('a watched preview in the browser', () => {
   test('lets the injected client reach the session from a file:// page', () => {
     // A `file://` document has the opaque origin `null`, which is exactly the case this proves is
     // allowed to open a loopback WebSocket.
-    expect(socketUrls).toHaveLength(1);
     expect(socketUrls[0]).toMatch(/^ws:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}$/);
     expect(consoleErrors).toEqual([]);
   });

@@ -100,8 +100,8 @@ describe('render', () => {
       currentUrl: () => string;
       receive: (data: unknown) => void;
       open: () => void;
-      /** Returns false when the close scheduled no reconnect. */
-      closeAndReconnect: () => boolean;
+      /** Returns the delay of the reconnect it ran, or undefined when the close scheduled none. */
+      closeAndReconnect: () => number | undefined;
     }
 
     /**
@@ -189,13 +189,12 @@ describe('render', () => {
           const reconnect = scheduled.shift();
 
           if (reconnect === undefined) {
-            return false;
+            return undefined;
           }
 
-          expect(reconnect.delayMilliseconds).toBe(1000);
           reconnect.callback();
 
-          return true;
+          return reconnect.delayMilliseconds;
         },
       };
     }
@@ -239,14 +238,22 @@ describe('render', () => {
       expect(client.reloadCount()).toBe(1);
     });
 
+    test('waits a second before reconnecting', async () => {
+      const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
+
+      // Reconnecting without a pause would spin a closed tab against a dead port as fast as the
+      // browser allows.
+      expect(client.closeAndReconnect()).toBe(1000);
+    });
+
     test('stops reconnecting after twenty-five closes without a connection in between', async () => {
       const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
 
       for (let attempt = 0; attempt < 25; attempt += 1) {
-        expect(client.closeAndReconnect()).toBe(true);
+        expect(client.closeAndReconnect()).toBeDefined();
       }
 
-      expect(client.closeAndReconnect()).toBe(false);
+      expect(client.closeAndReconnect()).toBeUndefined();
       expect(client.socketCount()).toBe(26);
     });
 
@@ -254,18 +261,18 @@ describe('render', () => {
       const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
 
       for (let attempt = 0; attempt < 25; attempt += 1) {
-        expect(client.closeAndReconnect()).toBe(true);
+        expect(client.closeAndReconnect()).toBeDefined();
       }
 
       client.open();
 
-      expect(client.closeAndReconnect()).toBe(true);
+      expect(client.closeAndReconnect()).toBeDefined();
     });
 
     test('reloads on a reload message from the socket a reconnect opened', async () => {
       const client = runClientFrom(await renderHtml('# Hello', { reload: { url: reloadUrl } }));
 
-      expect(client.closeAndReconnect()).toBe(true);
+      expect(client.closeAndReconnect()).toBeDefined();
 
       client.receive('reload');
 

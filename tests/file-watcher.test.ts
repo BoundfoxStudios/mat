@@ -144,6 +144,25 @@ describe('file watcher', () => {
     expect(await session.settledChangeCount(0)).toBe(0);
   });
 
+  test('reports nothing for an unrelated sibling written after the watched file changed', async () => {
+    const file = join(scratch, 'index.md');
+    writeFileSync(file, '# first');
+
+    const session = startWatching([file]);
+
+    writeFileSync(file, '# second');
+
+    expect(await session.settledChangeCount(1)).toBe(1);
+
+    // The re-arm a finished render performs. It keeps the baselines, so the event for the edit
+    // above has to have refreshed them itself, or the sibling below inherits its replacement.
+    session.watcher.update([file]);
+
+    writeFileSync(join(scratch, 'notes.md'), '# unrelated');
+
+    expect(await session.settledChangeCount(1)).toBe(1);
+  });
+
   test('coalesces changes to files in two directories into a single change', async () => {
     const first = join(scratch, 'first');
     const second = join(scratch, 'second');

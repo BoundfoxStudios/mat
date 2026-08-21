@@ -201,7 +201,7 @@ describe('watch session', () => {
   );
 
   test(
-    'watches a linked file and drops it once the link is gone',
+    'gives a linked preview the same reload channel and drops it once the link is gone',
     async () => {
       const directory = workspace('follow', {
         'a.md': '# A\n\n[b](b.md)',
@@ -210,6 +210,17 @@ describe('watch session', () => {
       const watch = spawnWatch(['a.md', '-f'], directory);
 
       await waitUntilArmed(watch);
+
+      const root = readFileSync(previewOf(watch), 'utf8');
+      const reloadUrl = /ws:\/\/127\.0\.0\.1:\d+\/[0-9a-f]{32}/.exec(root)?.[0];
+      const linkedHref = /href="(file:\/\/[^"]+)"/.exec(root)?.[1];
+
+      if (reloadUrl === undefined || linkedHref === undefined) {
+        throw new Error('the root preview carries no reload url, or no link to a preview');
+      }
+
+      // Reached through the href the reader would click, so this is the page they end up on.
+      expect(readFileSync(fileURLToPath(linkedHref), 'utf8')).toContain(reloadUrl);
 
       writeFileSync(join(directory, 'b.md'), '# B second');
       await waitForRenders(watch, 1);
