@@ -98,6 +98,12 @@ export async function runWatch({
   try {
     const first = await render(server.url);
 
+    // The first render of a large document takes seconds; an abort landing in that window must not
+    // still open a tab for a session that is already over.
+    if (signal.aborted) {
+      return;
+    }
+
     if (await openBrowser(first.previewUrl)) {
       logger.success(first.previewUrl);
     } else {
