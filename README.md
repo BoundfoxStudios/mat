@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="assets/mat-logo-dark.svg" alt="mat" width="128">
+
 # mat
 
 [![CI](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml/badge.svg)](https://github.com/BoundfoxStudios/mat/actions/workflows/ci.yml)
@@ -6,6 +10,8 @@
 [![License: MIT](https://img.shields.io/github/license/BoundfoxStudios/mat)](LICENSE)
 
 Preview a Markdown file in your browser, the way GitHub renders it.
+
+</div>
 
 ```console
 $ mat README.md
