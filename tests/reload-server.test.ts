@@ -126,6 +126,35 @@ describe('reload server', () => {
     expect(response.status).toBe(426);
   });
 
+  test('answers a request whose host is not a valid url with 404 instead of dying', async () => {
+    // A fetch handler that throws takes the whole watch session with it. The malformed request has
+    // to be written by hand, because `fetch` refuses to send one.
+    const { hostname, port } = new URL(startServer().url);
+    let reportAnswer: ((text: string) => void) | undefined;
+    const answer = new Promise<string>((resolve) => {
+      reportAnswer = resolve;
+    });
+
+    const socket = await Bun.connect({
+      hostname,
+      port: Number(port),
+      socket: {
+        open(connected) {
+          connected.write('GET / HTTP/1.1\r\nHost: a b\r\n\r\n');
+        },
+        data(_connected, chunk) {
+          reportAnswer?.(new TextDecoder().decode(chunk));
+        },
+      },
+    });
+
+    try {
+      expect(await answer).toContain('404');
+    } finally {
+      socket.end();
+    }
+  });
+
   test('uses a token of its own for every server', () => {
     expect(new URL(startServer().url).pathname).not.toBe(new URL(startServer().url).pathname);
   });

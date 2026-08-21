@@ -20,7 +20,9 @@ export function startReloadServer(): ReloadServer {
     hostname: '127.0.0.1',
     port: 0,
     fetch(request, server) {
-      if (new URL(request.url).pathname !== path) {
+      // `new URL` would throw on a request whose Host header cannot form one, and a throwing fetch
+      // handler takes the whole watch session down; `URL.parse` returns null instead.
+      if (URL.parse(request.url)?.pathname !== path) {
         return new Response('not found', { status: 404 });
       }
 
