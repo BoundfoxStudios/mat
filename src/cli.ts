@@ -290,12 +290,26 @@ function writePreview(previewPath: string, html: string): void {
   }
 }
 
-async function runRender(
+export interface RenderedDocuments {
+  html: string;
+  /** Where the root document's preview belongs; a `--output` render has no use for it. */
+  previewPath: string;
+  /** The root document's real path, or undefined when it was read from stdin. */
+  realPath: string | undefined;
+  /** Every rendered document that has a path on disk: the root first, then the followed links. */
+  renderedRealPaths: string[];
+}
+
+/**
+ * One render pass over the source and everything it links to, with the linked previews already
+ * written. Separate from `runRender` so that `--watch` can repeat exactly this step: every call
+ * builds a fresh follow queue, so a link added or removed since the last pass is picked up.
+ */
+async function renderDocuments(
   invocation: Invocation,
   configuration: Configuration,
-  out: OutputStreams,
   logger: Logger,
-): Promise<number> {
+): Promise<RenderedDocuments> {
   const { bytes, label } = await readSource(invocation, configuration, logger);
 
   if (bytes.byteLength > WARN_BYTES) {
@@ -304,8 +318,6 @@ async function runRender(
 
   const markdown = decodeMarkdown(bytes, label);
   const realPath = invocation.source === '-' ? undefined : label;
-  const toStdout = invocation.output === '-';
-  const toFile = invocation.output !== undefined && !toStdout;
   // The configured default is suppressed by `--output` rather than rejected like the explicit
   // flag: a single self-contained file cannot hold the linked previews, and a configuration
   // meant as a default must not make `--output` unusable.
@@ -327,6 +339,7 @@ async function runRender(
   });
 
   const collectedMessages = [...messages];
+  const renderedRealPaths = realPath === undefined ? [] : [realPath];
 
   if (followQueue !== undefined) {
     for (
@@ -345,6 +358,7 @@ async function runRender(
       });
 
       writePreview(previewPathFor(queued.realPath), linked.html);
+      renderedRealPaths.push(queued.realPath);
 
       const documentLabel = relative(process.cwd(), queued.realPath);
       collectedMessages.push(...linked.messages.map((message) => `${documentLabel}: ${message}`));
@@ -353,13 +367,34 @@ async function runRender(
 
   reportMessages(collectedMessages, logger);
 
-  if (toStdout) {
+  return {
+    html,
+    // stdin has no path to key the preview on, so its content decides: two different documents
+    // piped in must not overwrite each other's tab.
+    previewPath:
+      realPath === undefined
+        ? join(previewDirectory(), `${createHash('sha256').update(markdown).digest('hex')}.html`)
+        : previewPathFor(realPath),
+    realPath,
+    renderedRealPaths,
+  };
+}
+
+async function runRender(
+  invocation: Invocation,
+  configuration: Configuration,
+  out: OutputStreams,
+  logger: Logger,
+): Promise<number> {
+  const { html, previewPath } = await renderDocuments(invocation, configuration, logger);
+
+  if (invocation.output === '-') {
     out.stdout(html);
 
     return EXIT_SUCCESS;
   }
 
-  if (toFile && invocation.output !== undefined) {
+  if (invocation.output !== undefined) {
     const target = isAbsolute(invocation.output) ? invocation.output : resolve(invocation.output);
 
     try {
@@ -372,11 +407,6 @@ async function runRender(
 
     return EXIT_SUCCESS;
   }
-
-  const previewPath =
-    realPath === undefined
-      ? join(previewDirectory(), `${createHash('sha256').update(markdown).digest('hex')}.html`)
-      : previewPathFor(realPath);
 
   writePreview(previewPath, html);
 
