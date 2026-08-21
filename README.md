@@ -79,7 +79,7 @@ place, so fixing it and saving again picks the session back up. `Ctrl+C` ends it
 no browser can be started, the URL is printed and watching continues, because opening it by hand
 is all that is missing. `--watch` cannot be combined with `--output` or with `-`, and on network
 file systems changes may go unnoticed, because the `fs.watch` underneath does not reliably see
-them.
+them. It can be made the [default](#configuration).
 
 `--output` produces a file you can move or send: the diagram script and the fonts are embedded.
 Images are not — they stay absolute `file://` links to wherever they are on your disk.
@@ -93,15 +93,20 @@ Images are not — they stay absolute `file://` links to wherever they are on yo
 ```json
 {
   "defaultDocuments": ["NOTES.md", "README.md"],
-  "followLinks": true
+  "followLinks": true,
+  "watch": true
 }
 ```
 
-Both keys are optional. `defaultDocuments` replaces the built-in list of documents `mat` tries
-when called without a file, in the order given. `followLinks` makes `--follow-links` the default;
-`--follow-links=false` turns it back off for one call. A flag on the command line always wins over
-the file, and `--output` ignores a configured `followLinks`, because a single self-contained file
-cannot hold the linked previews.
+All three keys are optional. `defaultDocuments` replaces the built-in list of documents `mat` tries
+when called without a file, in the order given. `followLinks` makes `--follow-links` the default,
+and `watch` makes `--watch` the default, so plain `mat README.md` keeps running until `Ctrl+C`
+instead of returning once the browser is open. `--follow-links=false` and `--watch=false` turn
+either back off for one call, and a flag on the command line always wins over the file.
+
+Where a configured default cannot apply, it is dropped rather than turned into an error: `--output`
+ignores both, because a single self-contained file cannot hold the linked previews and there is no
+tab to reload, and reading from `-` ignores `watch`, because a pipe has no path to watch.
 
 A configuration file that is not valid JSON, or that contains unknown keys or wrong types, is an
 error: `mat` names the file and the problem, and exits `2`. Having no configuration file is the
