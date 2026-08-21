@@ -17,6 +17,8 @@ const QUIET_MILLISECONDS = 3000;
 
 interface WatchProcess {
   stderr(): string;
+  /** Resolves with the exit code, for the cases where mat is expected to end on its own. */
+  exited: Promise<number>;
   /** Sends the signal and resolves with the exit code mat chose for itself. */
   stop(signal: NodeJS.Signals): Promise<number>;
   kill(): Promise<void>;
@@ -42,8 +44,8 @@ afterEach(async () => {
 });
 
 /**
- * Deliberately does not await `child.exited`: the process under test only ends when it is told to,
- * so the caller drives it from the outside and reads stderr as it is written.
+ * Deliberately does not await `child.exited`: a watch session only ends when it is told to, so the
+ * caller drives it from the outside and reads stderr as it is written.
  *
  * The empty `PATH` leaves the child with no browser launcher, which is also the test of that
  * decision: watching has to continue after a failed launch, and the printed url is what the rest
@@ -57,7 +59,7 @@ function spawnWatch(args: readonly string[], cwd: string): WatchProcess {
   const stdoutPath = join(scratch, `stdout-${id}`);
   const stderrPath = join(scratch, `stderr-${id}`);
 
-  const child = Bun.spawn([process.execPath, 'run', CLI, ...args, '--watch'], {
+  const child = Bun.spawn([process.execPath, 'run', CLI, ...args], {
     env: {
       ...process.env,
       TMPDIR: scratch,
@@ -78,6 +80,7 @@ function spawnWatch(args: readonly string[], cwd: string): WatchProcess {
         return '';
       }
     },
+    exited: child.exited,
     stop(signal) {
       child.kill(signal);
 
@@ -145,7 +148,7 @@ describe('watch session', () => {
     're-renders a changed file into the same preview and exits 0 on SIGINT',
     async () => {
       const directory = workspace('rerender', { 'note.md': '# First' });
-      const watch = spawnWatch(['note.md'], directory);
+      const watch = spawnWatch(['note.md', '--watch'], directory);
 
       await waitUntilArmed(watch);
 
@@ -166,7 +169,7 @@ describe('watch session', () => {
     'exits 0 on SIGTERM as well',
     async () => {
       const directory = workspace('sigterm', { 'note.md': '# First' });
-      const watch = spawnWatch(['note.md'], directory);
+      const watch = spawnWatch(['note.md', '--watch'], directory);
 
       await waitUntilArmed(watch);
 
@@ -179,7 +182,7 @@ describe('watch session', () => {
     'keeps the last good preview when a render fails and recovers on the next save',
     async () => {
       const directory = workspace('recovery', { 'note.md': '# First' });
-      const watch = spawnWatch(['note.md'], directory);
+      const watch = spawnWatch(['note.md', '--watch'], directory);
 
       await waitUntilArmed(watch);
 
@@ -207,7 +210,7 @@ describe('watch session', () => {
         'a.md': '# A\n\n[b](b.md)',
         'b.md': '# B first',
       });
-      const watch = spawnWatch(['a.md', '-f'], directory);
+      const watch = spawnWatch(['a.md', '-f', '--watch'], directory);
 
       await waitUntilArmed(watch);
 
@@ -243,7 +246,7 @@ describe('watch session', () => {
     'stays on the default document it started with when a higher-priority one appears',
     async () => {
       const directory = workspace('pinned', { 'README.md': '# From README' });
-      const watch = spawnWatch([], directory);
+      const watch = spawnWatch(['--watch'], directory);
 
       await waitUntilArmed(watch);
 
@@ -258,4 +261,56 @@ describe('watch session', () => {
     },
     SPAWN_TIMEOUT,
   );
+});
+
+describe('a configured watch', () => {
+  // The path `spawnWatch` hands every child as `XDG_CONFIG_HOME`.
+  function writeConfiguration(contents: string): void {
+    const directory = join(scratch, 'config-home', 'mat');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'config.json'), contents);
+  }
+
+  test(
+    'starts a session without the flag',
+    async () => {
+      const directory = workspace('configured', { 'note.md': '# First' });
+      writeConfiguration('{"watch": true}');
+
+      const watch = spawnWatch(['note.md'], directory);
+
+      await waitUntilArmed(watch);
+
+      writeFileSync(join(directory, 'note.md'), '# Second');
+      await waitForRenders(watch, 1);
+
+      expect(readFileSync(previewOf(watch), 'utf8')).toContain('<h1 id="second">');
+      expect(await watch.stop('SIGINT')).toBe(0);
+    },
+    SPAWN_TIMEOUT,
+  );
+
+  // Exit 3 is the no-browser path of this suite, and reaching any exit at all is the point: a
+  // session would still be running instead.
+  const suppressed: ReadonlyArray<[string, readonly string[], number]> = [
+    ['--watch=false turns it back off', ['note.md', '--watch=false'], 3],
+    ['--output suppresses it instead of being rejected', ['note.md', '--output', '-'], 0],
+    ['stdin suppresses it, having no path to watch', ['-'], 3],
+  ];
+
+  for (const [name, args, code] of suppressed) {
+    test(
+      name,
+      async () => {
+        const directory = workspace(`suppressed-${args.length}-${code}`, { 'note.md': '# First' });
+        writeConfiguration('{"watch": true}');
+
+        const watch = spawnWatch(args, directory);
+
+        expect(await watch.exited).toBe(code);
+        expect(watch.stderr()).not.toContain('watching for changes');
+      },
+      SPAWN_TIMEOUT,
+    );
+  }
 });

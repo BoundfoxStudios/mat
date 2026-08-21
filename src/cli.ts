@@ -515,8 +515,16 @@ export async function main(
       updateCheck.report();
     };
 
+    // The configured default is suppressed by `--output` and by stdin rather than rejected like the
+    // explicit flag: neither can carry a session, and a default must not make them unusable.
+    const watch =
+      parsed.value.watch ??
+      (configuration.watch === true &&
+        parsed.value.output === undefined &&
+        parsed.value.source !== '-');
+
     try {
-      if (!parsed.value.watch) {
+      if (!watch) {
         return await runRender(parsed.value, configuration, out, logger);
       }
 

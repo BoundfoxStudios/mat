@@ -14,7 +14,7 @@ export interface Invocation {
   flavor: string;
   baseDir: string | undefined;
   followLinks: boolean | undefined;
-  watch: boolean;
+  watch: boolean | undefined;
 }
 
 const renderArguments = command({
@@ -79,8 +79,10 @@ const renderArguments = command({
     watch: flag({
       long: 'watch',
       short: 'w',
+      // `optional` for the same reason as `--follow-links` above.
+      type: optional(boolean),
       description:
-        'Re-render whenever a rendered file changes and reload the browser tab. Ctrl+C stops.',
+        'Re-render whenever a rendered file changes and reload the browser tab, until Ctrl+C. =false overrides the configuration file.',
     }),
   },
   handler: (invocation): Invocation => invocation,

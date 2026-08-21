@@ -149,8 +149,7 @@ describe('arguments', () => {
       baseDir: undefined,
       // Not false: only "not given" lets a configuration file supply the default.
       followLinks: undefined,
-      // Plain false, because no configuration key can supply it.
-      watch: false,
+      watch: undefined,
     });
   });
 
@@ -170,6 +169,11 @@ describe('arguments', () => {
     ]) {
       expect(await parse(args)).toMatchObject({ watch: true });
     }
+  });
+
+  test('accepts an explicit watch value', async () => {
+    expect(await parse(['note.md', '--watch=false'])).toMatchObject({ watch: false });
+    expect(await parse(['note.md', '--watch=true'])).toMatchObject({ watch: true });
   });
 
   test('accepts an explicit follow-links value', async () => {
@@ -237,6 +241,7 @@ describe('arguments', () => {
     ],
     // A pipe is read once and has no path to watch.
     ['watch with stdin', ['-', '--watch'], '--watch is only valid without -'],
+    ['a malformed watch value', ['a.md', '--watch=maybe'], 'expected value'],
     [
       'watch with stdin and a base directory',
       ['-', '-w', '--base-dir=/tmp'],
